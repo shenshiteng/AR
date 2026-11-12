@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>正在进入导航…</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; display: flex; align-items: center; justify-content: center;
+    background: #f5f6f8; color: #1a1a1a;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .box { width: 100%; max-width: 420px; padding: 0 28px; text-align: center; }
+  .dot {
+    width: 34px; height: 34px; margin: 0 auto 18px; border-radius: 50%;
+    border: 3px solid #d9dce1; border-top-color: #378add;
+    animation: spin .9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+  p { margin: 0; font-size: 15px; line-height: 1.7; }
+  .hint { margin-top: 14px; font-size: 12px; color: #8a8f98; word-break: break-all; }
+  .manual {
+    display: inline-block; margin-top: 22px; padding: 11px 22px;
+    border-radius: 999px; background: #378add; color: #fff;
+    font-size: 15px; text-decoration: none;
+  }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="dot"></div>
+  <p>正在进入导航…</p>
+  <p class="hint" id="hint"></p>
+  <a class="manual" id="manual" href="#" hidden>没有自动跳转？点这里</a>
+</div>
+<noscript>
+  <p style="padding:24px;text-align:center">需要开启 JavaScript 才能进入导航。</p>
+</noscript>
+<script>
+/* 跳转页：把「短域名/点位编号」翻译成带 sharecode 的真实地址。
+ *
+ * 为什么要有这一页：
+ *   托管平台的分享码（sharecode）会随重新发布而变。如果把它直接写进二维码，
+ *   一变动就要重印所有墙贴。放在这里，改一行常量即可，二维码一张都不用动。
+ *
+ * 部署：放到自有域名的根目录，并把 404 兜底也指向本页，
+ *       这样 /p-b2-01、/p-b2-08 等任意路径都能命中同一个文件。
+ *
+ * 改动：换托管地址改 HOST，换分享码改 SHARECODE。只此两处。
+ */
+(function () {
+  var HOST = 'https://lab-ar-nav.app.workbuddy.host';  // 托管地址
+  var PAGE = '/fp-ar.html';                             // 落地页
+  var SHARECODE = 'COAQ2BOKWL';                         // 平台分享码
+
+  // 点位编号的允许形式：P-B2-01。不符合就退化为统一入口，绝不白屏。
+  var LOC_RE = /^P-B2-\d{2}$/;
+
+  function targetUrl() {
+    var seg = location.pathname.replace(/\/+$/, '').split('/').pop() || '';
+    var loc = seg.toUpperCase();
+    var qs = '?sharecode=' + encodeURIComponent(SHARECODE);
+    if (LOC_RE.test(loc)) qs += '&loc=' + loc;
+    return HOST + PAGE + qs;
+  }
+
+  var url = targetUrl();
+  var manual = document.getElementById('manual');
+  document.getElementById('hint').textContent = url;
+
+  manual.href = url;
+
+  // 自动跳转；1.2 秒还没走就露出手动按钮（微信里偶发被拦时的退路）
+  setTimeout(function () { location.replace(url); }, 20);
+  setTimeout(function () { manual.hidden = false; }, 1200);
+})();
+</script>
+</body>
+</html>

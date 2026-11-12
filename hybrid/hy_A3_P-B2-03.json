@@ -1,0 +1,23 @@
+{
+  "url": "https://lab-ar-nav.app.workbuddy.host/?sharecode=COAQ2BOKWL",
+  "ecc": "q",
+  "version": 5,
+  "modules": 37,
+  "modules_total": 45,
+  "marker_id": 2,
+  "quiet_cells": 1,
+  "block_cells": 9,
+  "slot": [
+    14,
+    14
+  ],
+  "aruco_ratio": 0.1556,
+  "png": "C:\\Users\\35391\\Desktop\\python\\实验室定位\\hybrid\\hy_A3_P-B2-03.png",
+  "px_per_module": 20,
+  "size_px": [
+    900,
+    900
+  ],
+  "print_png": "C:\\Users\\35391\\Desktop\\python\\实验室定位\\hybrid\\hy_A3_P-B2-03_267mm.png",
+  "print_mm": 267.0
+}

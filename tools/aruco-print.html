@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArUco 定位码 · 打印页</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #eef1f4; color: #0f172a;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .bar {
+    position: sticky; top: 0; z-index: 5; display: flex; gap: 12px; align-items: center;
+    padding: 10px 16px; background: #fff; border-bottom: 1px solid #e2e8f0;
+  }
+  .bar h1 { font-size: 15px; margin: 0; }
+  .bar .hint { font-size: 12.5px; color: #64748b; }
+  .bar button {
+    margin-left: auto; padding: 8px 14px; border: 0; border-radius: 9px;
+    background: #0f766e; color: #fff; font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .sheet { max-width: 900px; margin: 16px auto; padding: 0 16px; display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
+  .card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px;
+    break-inside: avoid;
+  }
+  .up { font-size: 11px; color: #94a3b8; text-align: center; margin-bottom: 2px; letter-spacing: 2px; }
+  .mk { display: block; width: 100%; aspect-ratio: 1/1; }
+  .mk svg { width: 100%; height: 100%; display: block; }
+  .txt { margin-top: 10px; text-align: center; }
+  .place { font-size: 17px; font-weight: 700; }
+  .tip { font-size: 12.5px; color: #475569; margin-top: 4px; }
+  .code { font-size: 10.5px; color: #94a3b8; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+  @media print {
+    body { background: #fff; }
+    .bar { display: none; }
+    .sheet { max-width: none; margin: 0; padding: 10mm; gap: 8mm; }
+    .card { border: 0; padding: 0; }
+    .place { font-size: 15pt; }
+    .tip { font-size: 10pt; }
+    .code { font-size: 8pt; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>ArUco 定位码 · 打印页</h1>
+  <span class="hint">每张 8.5cm，A4 纸一页 4 张。打印后沿卡片边缘剪下，<b>「↑ 上边」朝上</b>贴正。</span>
+  <button onclick="window.print()">打印</button>
+</div>
+
+<div class="sheet" id="sheet"></div>
+
+<script src="../js/vendor/js-aruco2-cv.js"></script>
+<script src="../js/vendor/js-aruco2.js"></script>
+<script src="../data/labs.js"></script>
+<script src="../js/aruco-marker.js"></script>
+<script>
+(function () {
+  var D = window.LAB_DATA;
+  var sheet = document.getElementById('sheet');
+
+  (D.locations || []).forEach(function (loc, i) {
+    var mid = (loc.marker === undefined) ? i : loc.marker;
+    var card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML =
+      '<div class="up">↑ 上边朝上</div>' +
+      '<div class="mk">' + window.ArucoMark.svg(mid) + '</div>' +
+      '<div class="txt">' +
+        '<div class="place">' + loc.place + '</div>' +
+        '<div class="tip">打开导航 → 对着码扫一下 → 自动定位</div>' +
+        '<div class="code">ArUco ID ' + mid + ' · ' + loc.id + '</div>' +
+      '</div>';
+    sheet.appendChild(card);
+  });
+})();
+</script>
+</body>
+</html>

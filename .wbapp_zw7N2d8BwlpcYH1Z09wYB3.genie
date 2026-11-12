@@ -1,0 +1,5 @@
+appId: wbapp_zw7N2d8BwlpcYH1Z09wYB3
+name: 实验室AR扫码导航
+localDir: C:\Users\35391\Desktop\python\实验室定位
+appType: web
+entryHtml: fp-ar.html

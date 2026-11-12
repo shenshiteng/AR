@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b1220">
+<title>校园教室导航</title>
+<link rel="stylesheet" href="assets/css/ar.css?v=6">
+</head>
+<body>
+
+<video id="cam" playsinline muted autoplay></video>
+<div class="veil"></div>
+
+<!-- 顶部：我在哪 -->
+<header class="hbar" id="locBar">
+  <button class="iconbtn" id="rescanBtn" type="button" aria-label="重新扫码">⟳</button>
+  <div class="hbar-txt">
+    <div class="hbar-main" id="locText">还没定位</div>
+    <div class="hbar-sub" id="locSub">把墙上的定位码对准取景框</div>
+  </div>
+  <button class="pillbtn" id="compassBtn" type="button">开罗盘</button>
+</header>
+
+<!-- 扫码框 -->
+<div class="scanbox" id="scanbox">
+  <i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+  <div class="scanline"></div>
+  <span>对准定位码</span>
+</div>
+<div class="rollhint hidden" id="rollHint">手机拿正一点</div>
+
+<!-- 大箭头 -->
+<div class="arrowwrap hidden" id="arrowwrap">
+  <div class="modechip" id="modeChip">实时跟随</div>
+
+  <div class="guidebox">
+    <div class="guide" id="guide"></div>
+    <div class="arrowbox">
+      <svg id="arrow" class="arrow" viewBox="0 0 100 100" aria-hidden="true">
+        <path d="M50 6 L84 52 H64 V92 H36 V52 H16 Z" />
+      </svg>
+    </div>
+  </div>
+
+  <div class="action" id="action">选择教室</div>
+  <div class="ahint" id="arrowHint"></div>
+  <div class="detail" id="detail"></div>
+
+  <!-- 实时进度：边走边减 -->
+  <div class="trackbar" id="trackbar">
+    <div class="track-top">
+      <span>已走 <b id="walked">0</b> 米</span>
+      <span class="track-left">还剩 <b id="left">0</b> 米</span>
+    </div>
+    <div class="track-line"><i id="progFill"></i></div>
+    <div class="track-bot">
+      <span id="stepInfo">计步 0 步</span>
+      <span class="track-fix">
+        <button type="button" id="flipBtn" title="箭头指反了？点这里转 180°">⇄ 反了</button>
+        <button type="button" id="fixMinus">−5 米</button>
+        <button type="button" id="fixPlus">+5 米</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<!-- 底部：选教室 -->
+<section class="sheet" id="sheet">
+  <div class="handle"></div>
+  <div class="targetbar">
+    <div class="target" id="targetText">还没选教室</div>
+    <button class="ghostbtn hidden" id="mapBtn" type="button">看地图</button>
+    <button class="ghostbtn hidden" id="backBtn" type="button">换个教室</button>
+  </div>
+  <div class="search">
+    <input id="q" type="search" placeholder="输入教室号或关键词，如 302、3D打印" autocomplete="off">
+  </div>
+  <div class="locpick hidden" id="locPick">
+    <label for="locSel">没扫到码？手动选你所在的位置</label>
+    <select id="locSel"><option value="">— 选择位置 —</option></select>
+  </div>
+  <ul class="results" id="results"></ul>
+</section>
+
+<!-- 启动页 -->
+<div class="start" id="start">
+  <div class="start-card">
+    <div class="logo">◎</div>
+    <h1>校园教室导航</h1>
+    <p>对走廊墙上的定位码扫一下，<br>就知道你在哪、该往哪走。</p>
+    <button class="big" id="startBtn" type="button">开启相机扫码</button>
+    <button class="ghost" id="manualBtn" type="button">不用相机，手动选位置</button>
+    <div class="camfail hidden" id="camfail"></div>
+    <div class="note">需要允许相机权限 · 手机请用 https 地址打开</div>
+  </div>
+</div>
+
+<script src="js/vendor/js-aruco2-cv.js"></script>
+<script src="js/vendor/js-aruco2.js"></script>
+<script src="data/labs.js?v=6"></script>
+<script src="js/router.js?v=6"></script>
+<script src="js/ar.js?v=6"></script>
+</body>
+</html>

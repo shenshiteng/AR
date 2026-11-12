@@ -1,0 +1,26 @@
+{
+  "url": "https://lab-ar-nav.app.workbuddy.host/?sharecode=COAQ2BOKWL",
+  "url_len": 59,
+  "ecc": "h",
+  "version": 7,
+  "modules": 53,
+  "data_modules": 45,
+  "sizes_mm": [
+    60,
+    100,
+    150
+  ],
+  "mm_per_module": {
+    "60": 1.13,
+    "100": 1.89,
+    "150": 2.83
+  },
+  "dpi": 300,
+  "caption": "扫码进入导航",
+  "warn": "测试版 · 网址含分享码，会随发布变化，不可长期张贴",
+  "files": [
+    "code_60mm.png",
+    "code_100mm.png",
+    "code_150mm.png"
+  ]
+}

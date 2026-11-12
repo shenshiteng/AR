@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>实验室定位</title>
+<script>
+/* 打开网站直接进 AR 导航页；想看总览地图时访问 index.html?map=1 */
+(function () {
+  try {
+    if (location.search.indexOf('map=1') > -1) return;
+    var qs = location.search.replace(/^\?/, '');
+    location.replace('fp-ar.html' + (qs ? '?' + qs + '&from=index' : '?from=index'));
+  } catch (e) {}
+})();
+</script>
+<link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body>
+
+<!-- 顶部 -->
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-dot"></span>
+    <span id="siteName">实验室定位</span>
+  </div>
+  <button class="loc-pill" id="locPill" type="button">
+    <span class="ico">◎</span><span id="locPillText">定位中…</span>
+  </button>
+</header>
+
+<!-- 我在这里 -->
+<section class="hero" id="hero">
+  <div class="hero-row">
+    <div class="hero-label">你在这里</div>
+    <div class="hero-badge" id="sourceBadge">二维码识别</div>
+  </div>
+  <h1 class="hero-title" id="whereText">正在识别位置…</h1>
+  <p class="hero-sub" id="whereSub">选择你要去的实验室，会给你画出路线</p>
+
+  <!-- 未识别到位置时显示 -->
+  <div class="loc-picker hidden" id="locPicker">
+    <label for="locSelect">没扫到定位码？手动选择你所在的位置：</label>
+    <select id="locSelect"></select>
+  </div>
+</section>
+
+<!-- 搜索与筛选 -->
+<section class="toolbar">
+  <div class="search">
+    <span class="search-ico">⌕</span>
+    <input id="q" type="search" placeholder="搜索实验室 / 设备 / 关键词，如 3D打印、电池" autocomplete="off">
+    <button class="search-clear hidden" id="qClear" type="button">✕</button>
+  </div>
+  <div class="chips" id="chips"></div>
+</section>
+
+<!-- 楼层平面图（数字地图 · 点图查询） -->
+<section class="floor-section" id="floorSection">
+  <div class="fs-head">
+    <h2 class="fs-title">楼层平面图 · <span id="fsName">—</span></h2>
+    <div class="fs-tools">
+      <select id="kindFilter" class="kind-filter" aria-label="按分类筛选房间">
+        <option value="">全部分类</option>
+      </select>
+      <button id="layerToggle" class="export-btn" type="button" title="在原图与自动生成的数字地图之间切换">数字地图</button>
+      <button id="exportCsv" class="export-btn" type="button">导出台账</button>
+    </div>
+  </div>
+  <div class="mapbox">
+    <div class="map" id="browseMap"></div>
+    <div class="map-ctrl">
+      <button type="button" id="bZoomIn">＋</button>
+      <button type="button" id="bZoomOut">－</button>
+      <button type="button" id="bZoomFit" class="fit">全图</button>
+    </div>
+    <div class="map-legend">
+      <span><i class="lg-lab"></i>实验室</span>
+      <span><i class="lg-room2"></i>房间</span>
+      <span><i class="lg-hl"></i>选中</span>
+    </div>
+  </div>
+  <p class="fs-tip">点击地图上的房间可查看信息 · 拖动/滚轮缩放 · 搜索房间号会自动定位</p>
+  <div class="room-card hidden" id="roomCard"></div>
+</section>
+
+<!-- 结果列表 -->
+<main class="list" id="list"></main>
+<div class="empty hidden" id="empty">没有找到匹配的实验室，换个关键词试试</div>
+
+<footer class="foot">
+  <span id="footNote">数据来自 data/labs.js · 共 <b id="labCount">0</b> 间实验室</span>
+  <span class="foot-sep">·</span>
+  <a href="ar.html">AR 扫码导航 →</a>
+</footer>
+
+<!-- 路线面板 -->
+<section class="route hidden" id="routePanel">
+  <div class="route-head">
+    <button class="back-btn" id="backBtn" type="button" aria-label="返回">‹</button>
+    <div class="route-title">
+      <div class="rt-name" id="rtName">—</div>
+      <div class="rt-loc" id="rtLoc">—</div>
+    </div>
+  </div>
+
+  <div class="route-sum">
+    <div class="sum-item"><b id="sumMeters">—</b><span>米</span></div>
+    <div class="sum-item"><b id="sumMinutes">—</b><span>分钟</span></div>
+    <div class="sum-item"><b id="sumFloors">—</b><span>换乘</span></div>
+  </div>
+
+  <div class="floor-tabs" id="floorTabs"></div>
+
+  <div class="mapbox">
+    <div class="map" id="map"></div>
+    <div class="map-ctrl">
+      <button type="button" id="zoomIn">＋</button>
+      <button type="button" id="zoomOut">－</button>
+      <button type="button" id="zoomFit" class="fit">全图</button>
+    </div>
+    <div class="map-legend">
+      <span><i class="lg-start"></i>起点</span>
+      <span><i class="lg-end"></i>目的地</span>
+      <span><i class="lg-path"></i>路线</span>
+    </div>
+  </div>
+
+  <ol class="steps" id="steps"></ol>
+
+  <div class="lab-detail" id="labDetail"></div>
+</section>
+
+<script src="data/labs.js?v=7"></script>
+<script src="js/router.js?v=7"></script>
+<script src="js/app.js?v=7"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+{
+  "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL",
+  "ecc": "q",
+  "version": 6,
+  "modules": 41,
+  "modules_total": 49,
+  "marker_id": 2,
+  "quiet_cells": 2,
+  "block_cells": 11,
+  "slot": [
+    15,
+    15
+  ],
+  "aruco_ratio": 0.1429,
+  "png": "C:\\Users\\35391\\Desktop\\python\\实验室定位\\hybrid\\hy_m2_q_q2.png",
+  "px_per_module": 16,
+  "size_px": [
+    784,
+    784
+  ]
+}

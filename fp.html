@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>第一人称地图探索</title>
+<style>
+  :root{ --bg:#0f1419; --panel:#171d26; --line:#2a3340; --txt:#e6ebf2; --dim:#8b98a8; --acc:#38bdf8; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--txt);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC",sans-serif; overflow:hidden; }
+  #app{ display:flex; flex-direction:column; height:100%; }
+  header{ display:flex; align-items:center; gap:12px; padding:8px 14px;
+    border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap; }
+  header h1{ font-size:14px; margin:0; font-weight:600; }
+  .hud{ display:flex; gap:14px; flex-wrap:wrap; font:12px/1.5 ui-monospace,Menlo,Consolas,monospace; color:var(--dim); }
+  .hud b{ color:var(--txt); font-weight:600; }
+  .spacer{ flex:1; }
+  button{ background:#1d2834; color:var(--txt); border:1px solid var(--line); border-radius:6px;
+    padding:5px 10px; font-size:12px; cursor:pointer; }
+  button:hover{ border-color:var(--acc); }
+  button.on{ background:var(--acc); color:#04121f; border-color:var(--acc); }
+  #destInput{ background:#0f1419; border:1px solid var(--line); border-radius:6px; color:var(--txt);
+    padding:5px 10px; font-size:12px; width:190px; outline:none; }
+  #destInput:focus{ border-color:var(--acc); }
+  #destInput::placeholder{ color:var(--dim); }
+  select{ background:#1d2834; color:var(--txt); border:1px solid var(--line); border-radius:6px;
+    padding:5px 8px; font-size:12px; cursor:pointer; max-width:170px; }
+  select:hover{ border-color:var(--acc); }
+  main{ flex:1; display:flex; min-height:0; }
+  #fpWrap{ flex:3; position:relative; min-width:0; }
+  #fpWrap canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #ovWrap{ flex:2; position:relative; min-width:0; border-left:1px solid var(--line); background:#0a0e13; }
+  #ovWrap canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .ov-label{ position:absolute; top:8px; left:10px; font-size:11px; color:var(--dim); pointer-events:none; }
+  .fp-tip{ position:absolute; left:10px; bottom:10px; font-size:12px; color:var(--dim);
+    background:rgba(15,20,25,.7); padding:4px 8px; border-radius:6px; pointer-events:none; }
+  footer{ display:flex; gap:12px; align-items:center; padding:8px 14px; border-top:1px solid var(--line);
+    background:var(--panel); flex-wrap:wrap; }
+  footer .keys{ color:var(--dim); font-size:12px; }
+  footer kbd{ background:#1d2834; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px;
+    padding:1px 6px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; color:var(--txt); }
+  #report{ max-height:40vh; overflow:auto; }
+  #report div{ padding:3px 0; font-size:12px; border-bottom:1px dashed var(--line); }
+  #report .pass{ color:#4ade80; }
+  #report .fail{ color:#f87171; }
+  #report .warn{ color:#fbbf24; }
+  .hidden{ display:none !important; }
+  #crosshair{ position:absolute; left:50%; top:50%; width:10px; height:10px; margin:-5px; pointer-events:none; }
+  #crosshair::before,#crosshair::after{ content:''; position:absolute; background:rgba(255,255,255,.55); }
+  #crosshair::before{ left:4px; top:0; width:2px; height:10px; }
+  #crosshair::after{ top:4px; left:0; height:2px; width:10px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>第一人称地图探索</h1>
+    <select id="floorSel" title="切换楼层"></select>
+    <div class="hud">
+      <span>位置 <b id="hudPos">—</b></span>
+      <span>朝向 <b id="hudTheta">—</b></span>
+      <span>最近路点 <b id="hudNode">—</b></span>
+      <span>墙 <b id="hudWall">—</b></span>
+    </div>
+    <div class="spacer"></div>
+    <select id="stairSel" title="快速定位到楼梯口（作为起点）">
+      <option value="">楼梯口定位…</option>
+    </select>
+    <input id="destInput" type="text" list="destList" placeholder="搜房间/编号（跨楼层），回车巡航" autocomplete="off">
+    <datalist id="destList"></datalist>
+    <button id="btnGo" type="button">巡航</button>
+    <button id="btnNoclip" type="button">穿墙模式</button>
+    <button id="btnSelfTest" type="button">自检</button>
+  </header>
+
+  <main>
+    <div id="fpWrap"><div id="crosshair"></div><div class="fp-tip" id="fpTip"></div></div>
+    <div id="ovWrap"><canvas id="ovCanvas"></canvas><div class="ov-label">俯视总览 · 固定视角 · 黄=已清理的墙</div></div>
+  </main>
+
+  <footer>
+    <span class="keys">
+      <kbd>↑</kbd><kbd>↓</kbd> 前进/后退　
+      <kbd>←</kbd><kbd>→</kbd> 左右转身　
+      <kbd>Shift</kbd>+<kbd>←</kbd><kbd>→</kbd> 平移　
+      <kbd>N</kbd> 穿墙模式
+    </span>
+    <span class="keys" id="spawnNote"></span>
+    <div class="spacer"></div>
+    <div id="report" class="hidden"></div>
+  </footer>
+</div>
+
+<script src="js/vendor/three.min.js"></script>
+<script src="data/labs.js?v=11"></script>
+<script src="data/B2-2F_grid.js?v=11"></script>
+<script src="data/B2-3F_grid.js?v=11"></script>
+<script src="data/B2-5F_grid.js?v=11"></script>
+<script src="js/fp-core.js?v=11"></script>
+<script src="js/fp-view.js?v=11"></script>
+<script src="js/fp-input.js?v=11"></script>
+<script src="js/fp-validate.js?v=11"></script>
+<script src="js/router.js?v=11"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- 数据与错误提示 ---------- */
+  function fail(msg) {
+    document.body.innerHTML = '<div style="padding:20px;font:14px/1.6 monospace;color:#f87171">' + msg + '</div>';
+    throw new Error(msg);
+  }
+  if (!window.THREE) fail('three.js 未加载（js/vendor/three.min.js 缺失）');
+  if (!window.LAB_DATA) fail('data/labs.js 未加载或格式错误');
+
+  var D = window.LAB_DATA;
+  if (!D.floors || !D.floors.length) fail('LAB_DATA.floors 为空');
+
+  /* ---------- 各楼层的墙资产映射（grid 文件由 tools 生成） ---------- */
+  var GRIDS = {
+    'B2-2': { grid: window.FLOOR_B2_2, walls: window.FLOOR_B2_2_WALLS || [], removed: window.FLOOR_B2_2_REMOVED || [] },
+    'B2-3': { grid: window.FLOOR_B2_3, walls: window.FLOOR_B2_3_WALLS || [], removed: window.FLOOR_B2_3_REMOVED || [] },
+    'B2-5': { grid: window.FLOOR_B2_5, walls: window.FLOOR_B2_5_WALLS || [], removed: window.FLOOR_B2_5_REMOVED || [] }
+  };
+  function gridOf(fid) { return GRIDS[fid] || null; }
+
+  var G = window.LabRouter.buildGraph(D);   // 全楼层路网图（楼梯是跨层的边，由 links 决定）
+  var LABS = D.labs || [];
+  var LINKS = D.links || [];
+
+  /* 楼梯口节点集合（俯视图标蓝圈 + 出生面向楼梯用） */
+  var stairNeighbors = {};
+  LINKS.forEach(function (l) {
+    (stairNeighbors[l.from] = stairNeighbors[l.from] || []).push({ to: l.to, name: l.name });
+    (stairNeighbors[l.to] = stairNeighbors[l.to] || []).push({ to: l.from, name: l.name });
+  });
+  function stairFacing(fid, nodeId) {
+    var f = null;
+    D.floors.forEach(function (x) { if (x.id === fid) f = x; });
+    if (!f) return 90;
+    var n = null;
+    (f.nodes || []).forEach(function (x) { if (x.id === nodeId) n = x; });
+    if (!n) return 90;
+    var best = null, bd = Infinity;
+    (f.rooms || []).forEach(function (r) {
+      if (r.kind !== 'stair') return;
+      var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      var d = Math.hypot(cx - n.x, cy - n.y);
+      if (d < bd) { bd = d; best = { cx: cx, cy: cy }; }
+    });
+    if (!best) return 90;
+    return Math.atan2(best.cy - n.y, best.cx - n.x) * 180 / Math.PI;
+  }
+
+  function floorName(fid) {
+    var f = null;
+    D.floors.forEach(function (x) { if (x.id === fid) f = x; });
+    return f ? f.name : fid;
+  }
+
+  /* ---------- 可重绑的当前层状态 ---------- */
+  var floor = null, world = null, fp = null, ov = null, player = null;
+  var walkTrail = [];
+  var autoNodes = null, autoI = 0, autoDone = false, autoLab = null;
+
+  /* ---------- 切换楼层 ---------- */
+  function switchFloor(fid, silent) {
+    if (!gridOf(fid)) { $('spawnNote').textContent = '该楼层还没有墙数据：' + fid; return false; }
+    var f = null;
+    D.floors.forEach(function (x) { if (x.id === fid) f = x; });
+
+    floor = f;
+    world = window.FPWorld.create({
+      grid: gridOf(fid).grid,
+      rooms: f.rooms || [],
+      nodes: f.nodes || [],
+      edges: f.edges || [],
+      walls: gridOf(fid).walls
+    });
+
+    /* 重建第一人称视图（清掉旧 canvas 并释放 WebGL 资源），俯视总览复用同一 canvas */
+    var wrap = $('fpWrap');
+    if (fp && fp.renderer) {
+      fp.renderer.dispose();
+      if (fp.renderer.domElement && fp.renderer.domElement.parentNode) {
+        fp.renderer.domElement.parentNode.removeChild(fp.renderer.domElement);
+      }
+    }
+    fp = window.FPView.initFirstPerson(wrap, world);
+    wrap.appendChild($('crosshair'));
+    wrap.appendChild($('fpTip'));
+    var stairIds = [];
+    Object.keys(stairNeighbors).forEach(function (sid) { if (String(sid).split('/')[0] === fid) stairIds.push(sid); });
+    ov = window.FPView.initOverview($('ovCanvas'), world, gridOf(fid).removed, stairIds);
+
+    /* 出生点：?node= 优先，否则该层第一个定位点，否则第一个节点 */
+    var loc = null;
+    (D.locations || []).forEach(function (l) { if (!loc && l.floor === fid) loc = l; });
+    var params = new URLSearchParams(location.search);
+    var spawnNode = (params.get('floor') === fid && params.get('node')) || (loc ? loc.node : null) ||
+      (f.nodes && f.nodes[0] && f.nodes[0].id);
+    var facing = stairNeighbors[spawnNode] ? stairFacing(fid, spawnNode) : 90;   // 楼梯口面向楼梯
+    player = world.spawnAtNode(spawnNode, facing) || { x: world.width / 2, y: world.height / 2, theta: 0 };
+    walkTrail = [{ x: player.x, y: player.y }];
+    autoNodes = null; autoDone = false;
+
+    $('floorSel').value = fid;
+    if (!silent) $('spawnNote').textContent = '已切换到 ' + floorName(fid) + ' · 出生点 ' + spawnNode;
+    onResize();
+    return true;
+  }
+
+  /* ---------- 跨楼层搜索：分楼层搜索引擎 ---------- */
+  function findLab(text) {
+    var ql = String(text || '').trim().toLowerCase();
+    if (!ql) return null;
+    var hit = null;
+    LABS.forEach(function (l) {
+      if (hit) return;
+      if (String(l.room).toLowerCase() === ql || String(l.id).toLowerCase() === ql ||
+          (l.name || '').toLowerCase().indexOf(ql) > -1) hit = l;
+    });
+    /* 再试模糊：房间号包含（如输入「50」匹配 501/502/503…） */
+    if (!hit) {
+      LABS.forEach(function (l) {
+        if (hit) return;
+        if (String(l.room).indexOf(ql) > -1) hit = l;
+      });
+    }
+    return hit;
+  }
+
+  function startAuto(destText) {
+    var hit = findLab(destText);
+    if (!hit) { $('spawnNote').textContent = '找不到目的地：' + destText; return false; }
+    /* 跨楼层：目的地不在当前层 → 先自动切层（出生到该层默认楼梯口），再巡航 */
+    if (hit.floor !== floor.id) {
+      if (!switchFloor(hit.floor, true)) return false;
+      $('spawnNote').textContent = '目的地在 ' + floorName(hit.floor) + '，已自动切换楼层 → ';
+    }
+    var startId = window.LabRouter.nearestNode(G, floor.id, player.x, player.y);
+    if (!startId) { $('spawnNote').textContent += '当前位置不在路网附近，无法巡航'; return false; }
+    var r = window.LabRouter.routeToLab(G, startId, hit, null);
+    if (!r) { $('spawnNote').textContent += '目的地未连通：' + hit.name; return false; }
+    autoLab = hit;
+    autoNodes = r.nodes;
+    autoI = 1;
+    autoDone = false;
+    player = { x: G.nodes[r.nodes[0]].x, y: G.nodes[r.nodes[0]].y, theta: 0 };
+    walkTrail = [{ x: player.x, y: player.y }];
+    $('spawnNote').textContent = '自动巡航 → ' + hit.name + '（' + floorName(hit.floor) + ' ' + hit.room + '）· 从 ' + startId + ' 出发';
+    /* 起点即门口（如楼梯口定位后搜楼梯）：直接判定到达，避免单节点路线越界 */
+    if (r.nodes.length < 2) {
+      autoDone = true;
+      $('spawnNote').textContent = '已到达 ' + hit.name + '（' + floorName(hit.floor) + ' ' + hit.room + '）门口';
+    }
+    return true;
+  }
+
+  /* ---------- 输入栏 ---------- */
+  $('destInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') startAuto($('destInput').value);
+  });
+  $('btnGo').onclick = function () { startAuto($('destInput').value); };
+
+  var params = new URLSearchParams(location.search);
+
+  /* ---------- 楼层下拉 ---------- */
+  (function fillFloors() {
+    var sel = $('floorSel');
+    D.floors.forEach(function (f) {
+      if (!gridOf(f.id)) return;   // 没有墙数据的楼层先不上
+      var o = document.createElement('option');
+      o.value = f.id;
+      o.textContent = '楼层：' + f.name;
+      sel.appendChild(o);
+    });
+    sel.onchange = function () { if (this.value) switchFloor(this.value); };
+  })();
+
+  /* ---------- 楼梯口定位（全部楼层，跨层自动切换） ---------- */
+  (function fillStairs() {
+    var sel = $('stairSel');
+    LABS.forEach(function (l) {
+      if (!l.tags || l.tags.indexOf('楼梯间') < 0 || !l.door) return;
+      var o = document.createElement('option');
+      o.value = l.door + '|' + l.floor;
+      o.textContent = floorName(l.floor) + ' · ' + l.name;
+      sel.appendChild(o);
+    });
+    sel.onchange = function () {
+      if (!this.value) return;
+      var parts = this.value.split('|');
+      var face = stairFacing(parts[1], parts[0]);   // 面向楼梯间，出生即见台阶
+      if (parts[1] !== floor.id) switchFloor(parts[1], true);
+      var s = world.spawnAtNode(parts[0], face);
+      if (!s) return;
+      player = s;
+      walkTrail = [{ x: player.x, y: player.y }];
+      autoNodes = null; autoDone = false;
+      $('spawnNote').textContent = '已定位到楼梯口：' + this.options[this.selectedIndex].text + '（作为起点，可输入目的地巡航）';
+    };
+  })();
+
+  /* ---------- 搜索补全候选：全部楼层的实验室 + 楼梯间 ---------- */
+  (function fillDatalist() {
+    var dl = $('destList');
+    LABS.forEach(function (l) {
+      var o = document.createElement('option');
+      o.value = String(l.room);
+      o.label = l.name + '（' + floorName(l.floor) + '）';
+      dl.appendChild(o);
+    });
+  })();
+
+  /* ---------- 输入 ---------- */
+  var action = {};
+  window.FPInput.attach(window, action);
+
+  var noclip = false;
+  $('btnNoclip').onclick = function () {
+    noclip = !noclip;
+    this.classList.toggle('on', noclip);
+    $('hudWall').textContent = noclip ? '穿墙中' : (world.isWallPx(player.x, player.y) ? '在墙内' : '空');
+  };
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'KeyN') $('btnNoclip').click();
+  });
+
+  /* ---------- HUD ---------- */
+  function nearestNode(x, y) {
+    var best = null, bd = Infinity;
+    (world.nodes || []).forEach(function (n) {
+      var d = Math.hypot(n.x - x, n.y - y);
+      if (d < bd) { bd = d; best = n; }
+    });
+    return best;
+  }
+  function updateHud() {
+    $('hudPos').textContent = Math.round(player.x) + ', ' + Math.round(player.y);
+    $('hudTheta').textContent = Math.round(player.theta) + '°';
+    var n = nearestNode(player.x, player.y);
+    $('hudNode').textContent = n ? (n.id + (n.note ? ' · ' + n.note : '')) : '—';
+    if (!noclip) $('hudWall').textContent = world.isWallPx(player.x, player.y) ? '在墙内' : '空';
+  }
+
+  /* ---------- 自检 ---------- */
+  $('btnSelfTest').onclick = function () {
+    var r = window.FPValidate.run(world);
+    var box = $('report');
+    box.classList.remove('hidden');
+    box.innerHTML = '';
+    r.forEach(function (it) {
+      var d = document.createElement('div');
+      d.className = it.pass ? 'pass' : 'fail';
+      d.textContent = (it.pass ? '✓ ' : '✗ ') + it.name + ' —— ' + it.detail;
+      box.appendChild(d);
+    });
+  };
+  if (/[?&]selftest=1/.test(location.search)) $('btnSelfTest').click();
+
+  /* ---------- 主循环 ---------- */
+  var last = performance.now();
+  function loop(now) {
+    var dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    if (autoNodes && !autoDone) {
+      var tgt = G.nodes[autoNodes[autoI]];
+      var dx = tgt.x - player.x, dy = tgt.y - player.y;
+      var dist = Math.hypot(dx, dy);
+      if (dist < 8) {
+        autoI++;
+        if (autoI >= autoNodes.length) {
+          autoDone = true;
+          $('spawnNote').textContent = '已到达 ' + autoLab.name + '（' + floorName(autoLab.floor) + ' ' + autoLab.room + '）门口';
+        }
+      } else {
+        var want = Math.atan2(dy, dx) * 180 / Math.PI;
+        var dth = ((want - player.theta + 540) % 360) - 180;
+        // 先转向对齐（偏差大时原地转、不前进），避免拐点边转边走撞墙卡死
+        var fwd = Math.abs(dth) < 6 ? 1 : 0;
+        player = world.step(player, { fwd: fwd, turnR: dth > 0.5 ? 1 : 0, turnL: dth < -0.5 ? 1 : 0 }, dt);
+      }
+    } else {
+      player = noclip ? world.stepFree(player, action, dt) : world.step(player, action, dt);
+    }
+    window.FPView.updateFirstPerson(fp, player);
+    var lastT = walkTrail[walkTrail.length - 1];
+    if (!lastT || Math.hypot(player.x - lastT.x, player.y - lastT.y) > 4) {
+      walkTrail.push({ x: player.x, y: player.y });
+    }
+    window.FPView.renderOverview(ov, player, walkTrail);
+    updateHud();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- 窗口尺寸自适应 ---------- */
+  function onResize() {
+    var fw = $('fpWrap').clientWidth, fh = $('fpWrap').clientHeight;
+    window.FPView.resizeFirstPerson(fp, fw, fh);
+    ov.fit();
+  }
+  window.addEventListener('resize', onResize);
+
+  /* ---------- 启动：?floor=B2-5 可直达 5 层 ---------- */
+  var startFloor = params.get('floor');
+  if (!startFloor || !gridOf(startFloor)) startFloor = D.floors[0].id;
+  switchFloor(startFloor, true);
+  $('spawnNote').textContent = '当前 ' + floorName(floor.id) + ' · 搜索框可跨楼层搜房间，回车自动巡航';
+  /* ?autowalk=目的地：楼层就绪后再触发（可能跨层） */
+  if (params.get('autowalk')) startAuto(params.get('autowalk'));
+  requestAnimationFrame(loop);
+
+  /* ---------- 校验器对接 ---------- */
+  window.__FP__ = {
+    version: world.version,
+    get world() { return world; },
+    getFloor: function () { return floor.id; },
+    switchFloor: function (fid) { return switchFloor(fid, true); },
+    getState: function () {
+      var n = nearestNode(player.x, player.y);
+      return { x: player.x, y: player.y, theta: player.theta, z: player.z || 0, node: n ? n.id : null, floorId: floor.id };
+    },
+    setState: function (x, y, theta) { player = { x: x, y: y, theta: world.normalizeAngle(theta || 0) }; return player; },
+    teleportNode: function (nodeId, facingDeg) {
+      var fid = String(nodeId || '').split('/')[0];
+      var face = (facingDeg === undefined && stairNeighbors[nodeId]) ? stairFacing(fid, nodeId) : facingDeg;
+      if (fid && fid !== floor.id) switchFloor(fid, true);
+      var s = world.spawnAtNode(nodeId, face);
+      if (s) player = s;
+      return player;
+    },
+    step: function (act, dt) { player = world.step(player, act, dt); return window.__FP__.getState(); },
+    castRay: function (theta) { return world.castRay(player.x, player.y, theta); },
+    castRayAt: function (x, y, theta) { return world.castRay(x, y, theta); },
+    isWallPx: function (x, y) { return world.isWallPx(x, y); },
+    grid: function () { return world.grid; },
+    rooms: function () { return world.rooms; },
+    nodes: function () { return world.nodes; },
+    edges: function () { return world.edges; },
+    walls: function () { return world.walls; },
+    selfTest: function () { return window.FPValidate.run(world); }
+  };
+
+  console.log('[FP] 第一人称探索已启动（多楼层）。校验器接口 window.__FP__，当前层 ' + floor.id);
+})();
+</script>
+</body>
+</html>

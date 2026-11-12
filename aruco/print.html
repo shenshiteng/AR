@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ArUco 楼梯口定位码 · 打印页</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #eef1f4; color: #0f172a;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+  .bar { position: sticky; top: 0; z-index: 5; display: flex; gap: 12px; align-items: center;
+    padding: 10px 16px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+  .bar h1 { font-size: 15px; margin: 0; }
+  .bar .hint { font-size: 12.5px; color: #64748b; }
+  .bar button { margin-left: auto; padding: 8px 14px; border: 0; border-radius: 9px;
+    background: #0f766e; color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
+  .sheet { max-width: 900px; margin: 16px auto; padding: 0 16px; display: grid; gap: 14px; grid-template-columns: 1fr 1fr; }
+  .card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 14px; break-inside: avoid; }
+  .up { font-size: 11px; color: #94a3b8; text-align: center; margin-bottom: 2px; letter-spacing: 2px; }
+  .mk { display: block; width: 100%; }
+  .mk img { width: 100%; height: auto; display: block; image-rendering: pixelated; }
+  .txt { margin-top: 10px; text-align: center; }
+  .place { font-size: 17px; font-weight: 700; }
+  .code { font-size: 10.5px; color: #94a3b8; margin-top: 6px; font-variant-numeric: tabular-nums; }
+
+  @media print {
+    body { background: #fff; }
+    .bar { display: none; }
+    .sheet { max-width: none; margin: 0; padding: 0; gap: 0; grid-template-columns: 1fr; }
+    .card { border: 0; padding: 0; margin: 0; page-break-after: always;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    /* 打印时一张 A4 只放一个码，码居中、四周留白，直接贴墙 */
+    .mk { width: 130mm; }
+    .up { display: none; }
+    .place { font-size: 14pt; margin-top: 6mm; }
+    .code { font-size: 9pt; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <h1>ArUco 楼梯口定位码 · 打印页</h1>
+  <span class="hint">每张码配位置名 + ID，A4 一页 4 张，剪下后<b>「↑ 上边」朝上</b>贴正。</span>
+  <button onclick="window.print()">打印</button>
+</div>
+
+<div class="sheet" id="sheet"></div>
+
+<script src="../data/labs.js"></script>
+<script>
+(function () {
+  var D = window.LAB_DATA;
+  var sheet = document.getElementById('sheet');
+  (D.locations || []).forEach(function (loc, i) {
+    var mid = (loc.marker === undefined) ? i : loc.marker;
+    var card = document.createElement('div');
+    card.className = 'card';
+    // PNG 里已经印了位置名 + ArUco ID，这里直接整张展示即可（不用再重复文字）
+    card.innerHTML =
+      '<div class="up">↑ 上边朝上</div>' +
+      '<div class="mk"><img src="' + loc.id + '.png" alt="' + loc.id + '"></div>';
+    sheet.appendChild(card);
+  });
+})();
+</script>
+</body>
+</html>

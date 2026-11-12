@@ -1,0 +1,42 @@
+# ============================================
+# 实验室定位 · Git 忽略清单
+# 原则：只提交「源码 + 数据 + 文档」，
+#       可重新生成的截图/中间裁切/依赖都不进仓库。
+# ============================================
+
+# ---- 依赖 ----
+node_modules/
+
+# ---- AI 工作区（含 5MB 测试截图 + 平台配置，不属于代码）----
+.workbuddy/
+
+# ---- 系统 / 编辑器 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# ---- 根目录调试截图与中间页（_shot_* / _walk* / _zoom* / _t_* / _q_* ...）----
+# 用 / 锚定根目录，避免误伤 nav3d/_dev.html
+/_*.png
+/_*.jpg
+/_*.html
+
+# ---- 一楼/四楼照片局部裁切（分析中间产物）----
+/_1f_crops/
+
+# ---- 三维沙盘核对图（draw_floor.py / shot_nav3d.js 可重新生成）----
+nav3d/*.png
+nav3d/tools/_*.png
+nav3d/_walkshots/
+
+# ---- docs 下的逐房间放大裁切（可重新生成）----
+docs/img/crops/
+docs/img/grid/
+docs/img/aligned/
+docs/img/zoom/
+
+# ---- Python 缓存 ----
+__pycache__/
+*.pyc

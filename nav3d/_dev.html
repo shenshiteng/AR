@@ -1,0 +1,2360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第二实验楼 三楼 · 3D 室内导航</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  background:#e9edf3;color:#1a2233}
+#app{display:flex;height:100vh}
+
+#left{width:230px;flex:0 0 230px;background:#fff;border-right:1px solid #e3e7ee;
+  display:flex;flex-direction:column;overflow:hidden}
+#left h2{font-size:11px;font-weight:600;letter-spacing:.14em;color:#8a94a6;
+  margin:0;padding:14px 16px 8px}
+.fl{display:flex;align-items:center;gap:10px;padding:9px 16px;font-size:13.5px;color:#5a6478;cursor:pointer}
+.fl b{width:28px;font-size:12.5px;color:#9aa4b5;font-weight:600}
+.fl.on{background:#eef4ff;color:#1a6cf5;font-weight:600;border-left:3px solid #1a6cf5;padding-left:13px}
+.fl.on b{color:#1a6cf5}
+.fl.dim{opacity:.38;cursor:not-allowed}
+#left hr{border:0;border-top:1px solid #eef1f6;margin:8px 0}
+#search{margin:8px 14px 6px;padding:8px 12px;border:1px solid #dde3ed;border-radius:8px;
+  font-size:13px;outline:none;font-family:inherit;width:calc(100% - 28px)}
+#search:focus{border-color:#1a6cf5}
+#roomList{flex:1;overflow-y:auto;padding-bottom:10px}
+.ri{display:flex;align-items:center;gap:9px;padding:7px 16px;font-size:12.5px;color:#3a4459;cursor:pointer}
+.ri:hover{background:#f4f7fd}
+.ri.on{background:#eef4ff;color:#1a6cf5;font-weight:600}
+.ri.other{color:#7b8698}
+.ri.other i{opacity:.45}
+.ri i{width:8px;height:8px;border-radius:2px;flex:0 0 8px}
+.ri span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 跨楼层列表的楼层分隔条 */
+.rg{position:sticky;top:0;z-index:1;background:#f6f8fc;border-top:1px solid #eef1f6;
+  padding:5px 16px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#8a94a6}
+.rg.on{background:#eef4ff;color:#1a6cf5}
+
+#stage{flex:1;position:relative;background:radial-gradient(circle at 50% 42%,#fbfcfe 0%,#dde3ee 100%)}
+#cv{display:block;width:100%;height:100%}
+#hint{position:absolute;left:16px;bottom:14px;font-size:12px;color:#6b7687;
+  background:rgba(255,255,255,.86);padding:6px 12px;border-radius:20px;
+  border:1px solid #dde3ed;pointer-events:none}
+#tip{position:absolute;left:50%;top:16px;transform:translateX(-50%);
+  background:#1a2233;color:#fff;font-size:12.5px;padding:8px 18px;border-radius:20px;
+  opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap;max-width:80%}
+#tip.show{opacity:.93}
+
+#right{width:242px;flex:0 0 242px;background:#fff;border-left:1px solid #e3e7ee;
+  display:flex;flex-direction:column}
+#right .hd{padding:15px 18px 12px;border-bottom:1px solid #eef1f6}
+#right .hd span{font-size:11px;letter-spacing:.14em;color:#8a94a6;font-weight:600}
+#right .hd p{margin:7px 0 0;font-size:14px;font-weight:600;color:#1a2233;line-height:1.4}
+#steps{flex:1;overflow-y:auto;padding:6px 0}
+.st{display:flex;gap:11px;padding:9px 18px}
+.st .ic{width:22px;height:22px;flex:0 0 22px;border-radius:50%;background:#eef4ff;
+  display:flex;align-items:center;justify-content:center;font-size:12px;color:#1a6cf5}
+.st .tx{font-size:13px;color:#3a4459;line-height:1.45}
+.st .tx em{font-style:normal;font-weight:600;color:#1a2233}
+.st.end .ic{background:#ffecec;color:#e5342a}
+.st.start .ic{background:#e6f9ef;color:#0f9d58}
+.st.stair .ic{background:#fff3e0;color:#e08a00;font-size:11px}
+.st.stair .tx em{color:#c47400}
+.st.dim{opacity:.62}
+.st.dim .ic{background:#f1f4f9;color:#9aa4b5}
+#foot{padding:11px 18px;border-top:1px solid #eef1f6;font-size:11.5px;color:#8a94a6;line-height:1.6}
+
+/* 窗口变窄时把两条侧栏收一收，别把画布挤没了 */
+@media (max-width: 1000px){
+  #left{width:186px;flex-basis:186px}
+  #right{width:206px;flex-basis:206px}
+  #left h2{padding:12px 12px 6px}
+  .fl,.ri{padding-left:12px;padding-right:12px}
+  #right .hd{padding:13px 14px 10px}
+  #right .hd p{font-size:13px}
+  #foot{padding:9px 14px}
+}
+@media (max-width: 900px){
+  #app{flex-direction:column}
+  #left{width:100%;flex:0 0 auto;max-height:36vh;overflow-y:auto;
+        border-right:0;border-bottom:1px solid #e3e7ee}
+  /* 楼层选择压成一行小标签，把高度让给房间列表 */
+  #left h2{padding:10px 12px 6px}
+  #floors{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 10px}
+  .fl{width:auto;padding:4px 10px;border:1px solid #e3e7ee;border-radius:14px;
+      font-size:12px;gap:5px;border-left-width:1px}
+  .fl.on{border-color:#1a6cf5;background:#eef4ff;padding-left:10px}
+  .fl b{width:auto;font-size:12px}
+  #left hr{display:none}
+  #search{margin:4px 12px 6px;width:calc(100% - 24px)}
+  #stage{flex:1 1 auto;min-height:240px}
+  #right{width:100%;flex:0 0 auto;max-height:22vh;overflow-y:auto;
+         border-left:0;border-top:1px solid #e3e7ee}
+  #right .hd{padding:10px 14px 8px}
+  #hint{display:none}
+}
+#err{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  padding:32px;text-align:center;font-size:13.5px;line-height:1.9;color:#5a6478}
+#err b{display:block;font-size:15px;color:#c0392b;margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <aside id="left">
+    <h2>楼层选择 FLOOR</h2>
+    <div id="floors"></div>
+    <hr>
+    <h2>房间列表 ROOMS</h2>
+    <input id="search" placeholder="输入房间号或名称…">
+    <div id="roomList"></div>
+  </aside>
+
+  <main id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hint">拖拽旋转 · 滚轮缩放 · 点击房间导航</div>
+    <div id="tip"></div>
+  </main>
+
+  <aside id="right">
+    <div class="hd">
+      <span>路线指引 ROUTE</span>
+      <p id="destName">—</p>
+    </div>
+    <div id="steps"></div>
+    <div id="foot"></div>
+  </aside>
+
+</div>
+
+<script src="../js/vendor/three.min.js"></script>
+<script src="data/floor-3f.js"></script>
+<script src="data/floor-2f.js"></script>
+<script src="data/floor-5f.js"></script>
+<script src="data/floor-4f.js"></script>
+<script src="data/floor-1f.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var stageEl = document.getElementById('stage');
+
+  function fail(html) {
+    var d = document.createElement('div');
+    d.id = 'err';
+    d.innerHTML = html;
+    stageEl.appendChild(d);
+  }
+
+  if (!window.THREE) {
+    fail('<div><b>三维库没有加载出来</b>' +
+         '页面依赖同目录外的 js/vendor/three.min.js。<br>' +
+         '请确认 nav3d 文件夹还在原来的项目里，别单独把 index.html 拷出去。</div>');
+    return;
+  }
+
+  (function checkWebGL() {
+    var ok = false;
+    try {
+      var c = document.createElement('canvas');
+      ok = !!(window.WebGLRenderingContext &&
+              (c.getContext('webgl') || c.getContext('experimental-webgl')));
+    } catch (e) { ok = false; }
+    if (!ok) {
+      fail('<div><b>浏览器没有开启 3D 加速（WebGL）</b>' +
+           '所以画不出三维楼层。<br>可以试试：换 Chrome / Edge 打开；' +
+           '或在浏览器设置里打开「使用硬件加速」。</div>');
+      return;
+    }
+    window.__WEBGL_OK__ = true;
+  })();
+  if (!window.__WEBGL_OK__) return;
+
+  /* ---------------- 楼层注册表 ----------------
+     页面同时带 5 份楼层数据：
+       data/floor-3f.js  → window.FLOOR_DATA（老格式，保持不动）
+       data/floor-2f.js  → window.FLOOR_DATA_BY_ID['B2-2']
+       data/floor-5f.js  → window.FLOOR_DATA_BY_ID['B2-5']
+       data/floor-4f.js  → window.FLOOR_DATA_BY_ID['B2-4']
+       data/floor-1f.js  → window.FLOOR_DATA_BY_ID['B2-1']
+     ⚠ 1 层与其它层**不是同一套结构**（中央天井更大、南侧是 101 大空间、
+       西侧 107 是狭长房间、东翼是错层布局），坐标也是从 1 层疏散板单独实测的。
+       但 originPx / pxPerMeter 按同一栋楼折算过，所以竖直方向仍能对齐。 */
+  var FLOORS = {};
+  (function () {
+    var reg = window.FLOOR_DATA_BY_ID || {};
+    for (var k in reg) if (reg.hasOwnProperty(k)) FLOORS[k] = reg[k];
+    if (window.FLOOR_DATA) FLOORS['B2-3'] = window.FLOOR_DATA;
+  })();
+  var FLOOR_ORDER = ['B2-5', 'B2-4', 'B2-3', 'B2-2', 'B2-1'];   // 面板从上到下
+  var FLOOR_LABEL = { 'B2-5': '5F', 'B2-4': '4F', 'B2-3': '3F', 'B2-2': '2F', 'B2-1': '1F' };
+  var CUR_FLOOR = FLOORS['B2-3'] ? 'B2-3' : FLOOR_ORDER[0];
+
+  var D, S, O, WALL_H, BOUNDS;
+
+  function mx(px) { return (px - O[0]) / S; }
+  function mz(py) { return (py - O[1]) / S; }
+
+  /* 把某一层的缩放/原点/墙高/包围盒切进来（换层时调用） */
+  function applyFloorGlobals(id) {
+    D = FLOORS[id];
+    S = D.pxPerMeter;
+    O = D.originPx;
+    WALL_H = D.wallHeight;
+    BOUNDS = {
+      x1: mx(D.bounds.x1), x2: mx(D.bounds.x2),
+      z1: mz(D.bounds.y1), z2: mz(D.bounds.y2)
+    };
+  }
+  applyFloorGlobals(CUR_FLOOR);
+
+  var KIND = {
+    lab:     { floor:0xb9d5f5, dot:'#3b82f6' },
+    office:  { floor:0xf6cfab, dot:'#f97316' },
+    room:    { floor:0xaee3c4, dot:'#10b981' },
+    store:   { floor:0xd9bde7, dot:'#a855f7' },
+    service: { floor:0xcbd5e3, dot:'#64748b' },
+    toilet:  { floor:0xefd47f, dot:'#eab308' },
+    stair:   { floor:0xf2b3b3, dot:'#ef4444' }
+  };
+
+  /* ---------------- three.js 骨架 ---------------- */
+  var canvas = document.getElementById('cv');
+  var stage  = document.getElementById('stage');
+  var renderer = new THREE.WebGLRenderer({ canvas:canvas, antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf1f4fa);
+
+  /* 正交相机。初始先给个合理视野，真正的取景由 computeFit() 按模型包围盒算出来 ——
+     这样不管窗口是宽屏、窄屏还是竖屏，模型都会撑满画布，不会缩成一个小点。 */
+  var camera = new THREE.OrthographicCamera(-70, 70, 50, -50, 0.1, 1500);
+  var cam = { azim: Math.PI*0.25, polar: 0.838, dist: 480, zoom: 1 };
+
+  var FIT = null;
+  var _lastAzim = null, _lastPolar = null;
+
+  function fitBox(bb) {
+    camera.updateMatrixWorld();
+    var inv = new THREE.Matrix4().copy(camera.matrixWorld).invert();
+    var mn = bb.min, mxx = bb.max, xs = [], ys = [], i, v;
+    for (i = 0; i < 8; i++) {
+      v = new THREE.Vector3(
+        (i & 1) ? mxx.x : mn.x,
+        (i & 2) ? mxx.y : mn.y,
+        (i & 4) ? mxx.z : mn.z
+      ).applyMatrix4(inv);
+      xs.push(v.x); ys.push(v.y);
+    }
+    var x1 = Math.min.apply(null, xs), x2 = Math.max.apply(null, xs);
+    var y1 = Math.min.apply(null, ys), y2 = Math.max.apply(null, ys);
+    return { w:x2-x1, h:y2-y1, cx:(x1+x2)/2, cy:(y1+y2)/2 };
+  }
+
+  function computeFit() {
+    if (!root) return;
+    var bb = new THREE.Box3().setFromObject(root);
+    if (bb.isEmpty()) { FIT = null; return; }
+    FIT = fitBox(bb);
+  }
+
+  /* 把镜头对到某个矩形区域（房间/支廊），四周留一圈 */
+  function focusOn(r, margin) {
+    if (!r) return;
+    var mg = (margin === undefined) ? 3.0 : margin;
+    var bb = new THREE.Box3(
+      new THREE.Vector3(mx(r.x1)-mg, 0, mz(r.y1)-mg),
+      new THREE.Vector3(mx(r.x2)+mg, WALL_H, mz(r.y2)+mg)
+    );
+    camera.updateMatrixWorld();
+    FIT = fitBox(bb);
+    FIT.w *= 1.10; FIT.h *= 1.10;
+    applyView();
+  }
+
+  /* 回到整层视野 */
+  function resetFocus() { computeFit(); applyView(); }
+
+  function applyView() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h || !FIT) return;
+    var a = w / h, pad = 1.12;                 // 四周留一点边，别贴死
+    var vh = Math.max(FIT.h * pad, FIT.w * pad / a);
+    camera.top    = FIT.cy + vh/2;
+    camera.bottom = FIT.cy - vh/2;
+    camera.left   = FIT.cx - vh*a/2;
+    camera.right  = FIT.cx + vh*a/2;
+    camera.zoom = cam.zoom;
+    camera.updateProjectionMatrix();
+  }
+
+  function updateCamera() {
+    var sp = Math.sin(cam.polar), cp = Math.cos(cam.polar);
+    camera.position.set(cam.dist*sp*Math.sin(cam.azim), cam.dist*cp, cam.dist*sp*Math.cos(cam.azim));
+    camera.lookAt(0, 0, 0);
+    camera.zoom = cam.zoom;
+    camera.updateProjectionMatrix();
+    // 视角一转，模型在画面上的投影范围就变了，得重新取景
+    if (_lastAzim === null || Math.abs(cam.azim-_lastAzim) > 1e-4 ||
+        Math.abs(cam.polar-_lastPolar) > 1e-4) {
+      _lastAzim = cam.azim; _lastPolar = cam.polar;
+      computeFit();
+      applyView();
+    }
+  }
+
+  function resize() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+    if (!FIT) computeFit();
+    applyView();
+  }
+  window.addEventListener('resize', resize);
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c4d6, 0.34));
+
+  var sun = new THREE.DirectionalLight(0xffffff, 0.72);
+  sun.position.set(60, 110, 45);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -80; sun.shadow.camera.right = 80;
+  sun.shadow.camera.top  =  80; sun.shadow.camera.bottom = -80;
+  sun.shadow.camera.near = 1;   sun.shadow.camera.far = 400;
+  sun.shadow.bias = -0.0008;
+  sun.shadow.radius = 2.5;
+  scene.add(sun);
+
+  var fill = new THREE.DirectionalLight(0xd6e2ff, 0.20);
+  fill.position.set(-50, 40, -45);
+  scene.add(fill);
+
+  /* ---------------- 建模工具 ---------------- */
+  var matCache = {};
+  function mat(color, rough) {
+    var k = color + '_' + (rough === undefined ? 0.9 : rough);
+    if (!matCache[k]) matCache[k] = new THREE.MeshStandardMaterial({
+      color:color, roughness:(rough === undefined ? 0.9 : rough), metalness:0
+    });
+    return matCache[k];
+  }
+  function box(w, h, d, x, y, z, m) {
+    var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    return mesh;
+  }
+  function wallSeg(x1, z1, x2, z2, h, t, color, y0) {
+    var dx = x2-x1, dz = z2-z1;
+    var len = Math.sqrt(dx*dx + dz*dz);
+    if (len < 0.05) return null;
+    var yb = y0 || 0;
+    var m = box(len, h, t, (x1+x2)/2, yb + h/2, (z1+z2)/2, mat(color === undefined ? 0xf3f6fb : color));
+    m.rotation.y = -Math.atan2(dz, dx);
+    return m;
+  }
+  function slab(x1, z1, x2, z2, color, y, thick) {
+    var w = Math.abs(x2-x1), d = Math.abs(z2-z1), th = thick || 0.08;
+    return box(w, th, d, (x1+x2)/2, (y||0)+th/2, (z1+z2)/2, mat(color, 0.96));
+  }
+
+  var root = new THREE.Group();
+  scene.add(root);
+  var floorMeshes = [];
+
+  /* ---------------- 楼层建模 ---------------- */
+  var WALL_COL = 0xf3f6fb;
+
+  /* 中庭 = 通高天井：楼板在这里是挖穿的，往下直通首层地面。
+     数据里 D.atrium 是图片像素坐标，这里转成米。
+     换层时要重新算（5 层没有天井），所以放在 setVoid() 里。 */
+  var VOID = null;
+  function setVoid() {
+    VOID = D.atrium ? {
+      x1: mx(D.atrium.x1), x2: mx(D.atrium.x2),
+      z1: mz(D.atrium.y1), z2: mz(D.atrium.y2)
+    } : null;
+  }
+
+  var WELL_D = 3.9;                    // 天井往下延伸的深度（按沙盘比例 ≈ 两层挑空）
+  var WELL_T = 0.30;                   // 井壁厚度
+
+  /* 铺一块楼板；如果它与天井相交，就绕着天井拆成四块，中间留空 */
+  function slabCut(x1, z1, x2, z2, color, y, thick, noShadow) {
+    if (!VOID) {
+      var s0 = slab(x1, z1, x2, z2, color, y, thick);
+      if (noShadow) s0.castShadow = false;
+      root.add(s0);
+      return;
+    }
+    var parts = [
+      [x1, z1, x2, VOID.z1],            // 北
+      [x1, VOID.z2, x2, z2],            // 南
+      [x1, VOID.z1, VOID.x1, VOID.z2],  // 西
+      [VOID.x2, VOID.z1, x2, VOID.z2]   // 东
+    ];
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (Math.abs(p[2]-p[0]) < 0.03 || Math.abs(p[3]-p[1]) < 0.03) continue;
+      var s = slab(p[0], p[1], p[2], p[3], color, y, thick);
+      if (noShadow) s.castShadow = false;
+      root.add(s);
+    }
+  }
+
+  function buildFloor() {
+    // 地基（楼下的实体，同样挖穿天井）
+    slabCut(BOUNDS.x1-1.4, BOUNDS.z1-1.4, BOUNDS.x2+1.4, BOUNDS.z2+1.4, 0xc7d0de, -0.5, 0.5, true);
+    // 本层楼板
+    slabCut(BOUNDS.x1, BOUNDS.z1, BOUNDS.x2, BOUNDS.z2, 0xdbe2ee, 0, 0.14);
+
+    if (VOID) buildVoid();
+
+    // 支廊（两排房间之间的走道）：单独铺一层稍亮的石材地面，把它显出来
+    if (D.spurs) {
+      for (var s = 0; s < D.spurs.length; s++) {
+        var sp = D.spurs[s];
+        var sg = slab(mx(sp.x1), mz(sp.y1), mx(sp.x2), mz(sp.y2), 0xc9d2e0, 0.14, 0.03);
+        root.add(sg);
+      }
+    }
+
+    // 走廊（西侧）地面：同样铺出来，让通道看得见
+    if (D.corridors) {
+      for (var c = 0; c < D.corridors.length; c++) {
+        var co = D.corridors[c];
+        root.add(slab(mx(co.x1), mz(co.y1), mx(co.x2), mz(co.y2), 0xc9d2e0, 0.14, 0.03));
+      }
+    }
+
+    // 楼体缺口（原图上空白的室外区域）：铺一层暗色地坪，和"能走的楼面"区分开
+    if (D.exterior) {
+      for (var e = 0; e < D.exterior.length; e++) {
+        var ex = D.exterior[e];
+        var eg = slab(mx(ex.x1), mz(ex.y1), mx(ex.x2), mz(ex.y2), 0x9aa4b4, 0.148, 0.012);
+        eg.castShadow = false;
+        root.add(eg);
+      }
+    }
+
+    // 楼梯间（走廊左侧那一段）
+    if (D.stairs) buildStairFlights(D.stairs);
+
+    // 墙体与实心区域
+    if (D.solids) buildSolids(D.solids);
+
+    for (var i = 0; i < D.rooms.length; i++) buildRoom(D.rooms[i]);
+
+    // 玻璃幕墙：走廊西侧是通长玻璃，不是墙 —— 必须在房间之后建，
+    // 否则半透明的玻璃会被后面画上去的实墙挡住，看起来又是一堵墙。
+    if (D.glassWalls) buildGlassWalls(D.glassWalls);
+
+    // 补墙：把走廊尽端 / 楼体缺口封住，也让公共空间自己的墙上能开门开窗
+    if (D.wallRuns) buildWallRuns(D.wallRuns);
+
+    // 最外圈一圈墙：整栋楼的外轮廓拉成一圈连续实墙（最后建，压在房间墙外侧）
+    if (D.perimeter) buildPerimeter(D.perimeter, D.perimeterHoles);
+
+    // 家具（目前只有洗漱台）
+    if (D.fixtures) buildFixtures(D.fixtures);
+  }
+
+  /* ---------------- 玻璃幕墙 ----------------
+     现场照片（312/311/313/314 那侧走廊）左边是一整排窗，不是实墙。
+     这里按数据里的线段建：通高玻璃 + 竖向窗樘 + 上下横档。
+     玻璃用 doubleSide + depthWrite:false，避免从走廊两侧看都被"吃掉"。 */
+  var GLASS_MAT = new THREE.MeshStandardMaterial({
+    color: 0x9ed8f2, emissive: 0x2a80a8, emissiveIntensity: 0.35,
+    transparent: true, opacity: 0.26, roughness: 0.06, metalness: 0.0,
+    side: THREE.DoubleSide, depthWrite: false
+  });
+  var MULLION_MAT = new THREE.MeshStandardMaterial({
+    color: 0xdfe7f2, roughness: 0.45, metalness: 0.0
+  });
+
+  function buildGlassWalls(list) {
+    for (var i = 0; i < list.length; i++) {
+      var g = list[i];
+      var x1 = mx(g.x1), z1 = mz(g.y1), x2 = mx(g.x2), z2 = mz(g.y2);
+      var dx = x2-x1, dz = z2-z1;
+      var len = Math.sqrt(dx*dx + dz*dz);
+      if (len < 0.2) continue;
+      var ang = -Math.atan2(dz, dx);
+      var cx = (x1+x2)/2, cz = (z1+z2)/2;
+
+      // 玻璃面：从 0.10m 到墙顶下 0.10m
+      var gh = WALL_H - 0.20;
+      var panel = new THREE.Mesh(new THREE.BoxGeometry(len, gh, 0.05), GLASS_MAT);
+      panel.position.set(cx, 0.14 + 0.10 + gh/2, cz);
+      panel.rotation.y = ang;
+      panel.castShadow = false;
+      panel.receiveShadow = false;
+      panel.renderOrder = 2;
+      root.add(panel);
+
+      // 窗樘：直立立柱，每 ~1.15m 一根（对应照片里的分格）
+      var n = Math.max(2, Math.round(len / 1.15));
+      for (var k = 0; k <= n; k++) {
+        var t = k / n;
+        var post = new THREE.Mesh(new THREE.BoxGeometry(0.09, WALL_H, 0.14), MULLION_MAT);
+        post.position.set(x1 + dx*t, 0.14 + WALL_H/2, z1 + dz*t);
+        post.rotation.y = ang;
+        post.castShadow = false;
+        root.add(post);
+      }
+      // 上楣 + 下槛 + 中间一道横档（照片里窗下是矮墙/窗台）
+      var rails = [[0.10, 0.14], [WALL_H - 0.16, 0.12], [1.02, 0.07]];
+      for (var r2 = 0; r2 < rails.length; r2++) {
+        var ry = rails[r2][0], rh = rails[r2][1];
+        var rail = new THREE.Mesh(new THREE.BoxGeometry(len, rh, 0.18), MULLION_MAT);
+        rail.position.set(cx, 0.14 + ry + rh/2, cz);
+        rail.rotation.y = ang;
+        rail.castShadow = false;
+        root.add(rail);
+      }
+    }
+  }
+
+  /* ---------------- 补墙（wallRuns） ----------------
+     不属于任何房间的独立墙段。两种用途：
+       ① 把走廊尽端 / 楼体缺口封住（否则那里是一个"没有墙的洞"）；
+       ② 在公共空间（走廊、盥洗室）自己的墙上开门或开窗。
+     数据：{ x1,y1,x2,y2, door:{t,w,leaf,n:[nx,ny]}, win:{t,w} }
+       只支持水平段(y1==y2)或竖直段(x1==x2)；
+       n 是门扇转开的方向（图上坐标：x 向右、y 向下）。 */
+  var WIN_GLASS_MAT = new THREE.MeshStandardMaterial({
+    color: 0x66c2ea, emissive: 0x1f7ea6, emissiveIntensity: 1.05,
+    transparent: true, opacity: 0.78, roughness: 0.18, metalness: 0.05
+  });
+
+  function buildWallRuns(list) {
+    var TW = 0.20;
+    var SILL = Math.min(0.62, WALL_H * 0.35);
+    var HEAD = Math.min(1.42, WALL_H - 0.30);
+    var OPEN = 72 * Math.PI / 180;
+
+    for (var i = 0; i < list.length; i++) {
+      var g = list[i];
+      var isV = (g.x1 === g.x2);
+      var a0 = isV ? Math.min(g.y1, g.y2) : Math.min(g.x1, g.x2);
+      var a1 = isV ? Math.max(g.y1, g.y2) : Math.max(g.x1, g.x2);
+      var lo = isV ? mz(a0) : mx(a0);
+      var hi = isV ? mz(a1) : mx(a1);
+      var span = hi - lo;
+      if (span < 0.15) continue;
+      var fixed = isV ? mx(g.x1) : mz(g.y1);
+
+      var fill = function (u0, u1, y0, y1) {
+        if (u1 - u0 < 0.03 || y1 - y0 < 0.03) return;
+        var hh = y1 - y0, L = u1 - u0, mid = (u0 + u1) / 2;
+        if (isV) root.add(box(TW, hh, L, fixed, y0 + hh / 2, mid, mat(WALL_COL, 0.9)));
+        else root.add(box(L, hh, TW, mid, y0 + hh / 2, fixed, mat(WALL_COL, 0.9)));
+      };
+
+      var holes = [];
+      if (g.door) {
+        var dW = Math.min(g.door.w || 1.1, span * 0.85);
+        var dt = (g.door.t === undefined) ? 0.5 : g.door.t;
+        holes.push({
+          k: 'door', d: g.door, h: dW / 2,
+          c: Math.min(hi - dW / 2, Math.max(lo + dW / 2, lo + span * dt))
+        });
+      }
+      if (g.win) {
+        var wW = Math.min(g.win.w || 2.0, span * 0.9);
+        var wt = (g.win.t === undefined) ? 0.5 : g.win.t;
+        holes.push({
+          k: 'win', d: g.win, h: wW / 2,
+          c: Math.min(hi - wW / 2, Math.max(lo + wW / 2, lo + span * wt))
+        });
+      }
+      holes.sort(function (p, q) { return p.c - q.c; });
+
+      var cur = lo;
+      for (var q = 0; q < holes.length; q++) {
+        var ho = holes[q];
+        var s = Math.max(lo, ho.c - ho.h), t = Math.min(hi, ho.c + ho.h);
+        if (s - cur > 0.02) fill(cur, s, 0, WALL_H);
+        var gw = t - s;
+
+        if (ho.k === 'win') {
+          fill(s, t, 0, SILL);
+          fill(s, t, HEAD, WALL_H);
+          var gh = HEAD - SILL;
+          if (isV) root.add(box(0.08, gh, gw - 0.04, fixed, SILL + gh / 2, (s + t) / 2, WIN_GLASS_MAT));
+          else root.add(box(gw - 0.04, gh, 0.08, (s + t) / 2, SILL + gh / 2, fixed, WIN_GLASS_MAT));
+          // 窗樘：上下各一道，让窗看得出是窗而不是洞
+          var fr = [[SILL, 0.05], [HEAD - 0.05, 0.05]];
+          for (var f = 0; f < 2; f++) {
+            if (isV) root.add(box(0.12, fr[f][1], gw, fixed, 0.14 + fr[f][0], (s + t) / 2, mat(0xdfe7f2, 0.45)));
+            else root.add(box(gw, fr[f][1], 0.12, (s + t) / 2, 0.14 + fr[f][0], fixed, mat(0xdfe7f2, 0.45)));
+          }
+        } else {
+          // 门扇：沿墙方向 u，转开方向取数据里的 n
+          var dd = ho.d;
+          var ux = isV ? 0 : 1, uy = isV ? 1 : 0;
+          var nx = dd.n ? dd.n[0] : 0, ny = dd.n ? dd.n[1] : (isV ? 1 : 0);
+          var nl = Math.sqrt(nx * nx + ny * ny) || 1;
+          nx /= nl; ny /= nl;
+          var leaves = (dd.leaf === 2) ? 2 : 1;
+          var lw = gw / leaves;
+          var dh = Math.min(1.45, WALL_H - 0.28);
+          for (var L = 0; L < leaves; L++) {
+            // 铰链落在洞的两端；闭合方向朝洞中间
+            var hingeA = (leaves === 2) ? (L === 0 ? s : t) : (dd.hinge === 'hi' ? t : s);
+            var du = (leaves === 2) ? (L === 0 ? 1 : -1) : (dd.hinge === 'hi' ? -1 : 1);
+            // 换算回图上像素（mx/mz 换成米，这里要反算）
+            var hpx, hpy;
+            if (isV) { hpx = g.x1; hpy = a0 + (hingeA - lo) * S; }
+            else { hpx = a0 + (hingeA - lo) * S; hpy = g.y1; }
+            var cA = Math.cos(OPEN) * du, sA = Math.sin(OPEN);
+            var ex = hpx + (ux * cA + nx * sA) * lw * S;
+            var ey = hpy + (uy * cA + ny * sA) * lw * S;
+            var pane = wallSeg(mx(hpx), mz(hpy), mx(ex), mz(ey), dh, 0.06, 0x6b4a2e, 0.14);
+            if (pane) { pane.castShadow = true; root.add(pane); }
+          }
+          // 门槛石条
+          if (isV) {
+            root.add(box(0.30, 0.02, gw, fixed, 0.212, (s + t) / 2, SILL_MAT));
+          } else {
+            root.add(box(gw, 0.02, 0.30, (s + t) / 2, 0.212, fixed, SILL_MAT));
+          }
+        }
+        cur = Math.max(cur, t);
+      }
+      if (hi - cur > 0.02) fill(cur, hi, 0, WALL_H);
+    }
+  }
+
+  /* ---------------- 最外圈一圈墙 ----------------
+     用户要求：围着楼体外轮廓的那一整圈外墙，凡是有空缺、断开的地方全部连起来，
+     当成一整段连续实墙处理。
+
+     数据 D.perimeter 是一组首尾相接的线段（由 tools/gen_perimeter.py 从
+     房间/走廊并集的轮廓自动生成，已跳过西侧玻璃幕墙那一段——玻璃本身就是外墙）。
+     做法：每段按 0.26m 厚、通高建一条，两端各延长半个墙厚，保证转角处不出现缝。
+
+     例外（D.perimeterHoles）：这一圈墙上本来就有窗的地方要留空 —— 窗是"墙上有洞"，
+     不是"墙断了"，用实墙盖上去会把窗封死。数据里按线段给出要挖掉的区间。 */
+  function buildPerimeter(list, holes) {
+    var T = 0.26, e = T / 2;
+    holes = holes || [];
+
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      var isV = (s.x1 === s.x2);
+      var fixedPx = isV ? s.x1 : s.y1;
+      var a0 = isV ? Math.min(s.y1, s.y2) : Math.min(s.x1, s.x2);
+      var a1 = isV ? Math.max(s.y1, s.y2) : Math.max(s.x1, s.x2);
+      if (a1 - a0 < 4) continue;
+
+      // 这条线上被窗占掉的区间（图坐标）
+      var cuts = [];
+      for (var q = 0; q < holes.length; q++) {
+        var h = holes[q];
+        if ((h.x1 === h.x2) !== isV) continue;
+        if (Math.abs((isV ? h.x1 : h.y1) - fixedPx) > 4) continue;
+        var h0 = isV ? Math.min(h.y1, h.y2) : Math.min(h.x1, h.x2);
+        var h1 = isV ? Math.max(h.y1, h.y2) : Math.max(h.x1, h.x2);
+        var lo = Math.max(a0, h0), hi = Math.min(a1, h1);
+        if (hi - lo > 2) cuts.push([lo, hi]);
+      }
+      cuts.sort(function (p, r) { return p[0] - r[0]; });
+
+      // 把这条线按 cuts 切开，剩下的实心段建墙（只有整段最外两端才延长半墙厚）
+      var spans = [], cur = a0;
+      for (var c = 0; c < cuts.length; c++) {
+        if (cuts[c][0] - cur > 2) spans.push([cur, cuts[c][0], false]);
+        cur = Math.max(cur, cuts[c][1]);
+      }
+      if (a1 - cur > 2) spans.push([cur, a1, false]);
+      if (!spans.length) continue;
+      spans[0][2] = true;                              // 首段起点延长
+      spans[spans.length - 1][3] = true;               // 末段终点延长
+
+      for (var k = 0; k < spans.length; k++) {
+        var p = spans[k];
+        var p0 = p[0] - (p[2] ? e * S : 0);
+        var p1 = p[1] + (p[3] ? e * S : 0);
+        var u0, v0, u1, v1;
+        if (isV) { u0 = mx(fixedPx); v0 = mz(p0); u1 = mx(fixedPx); v1 = mz(p1); }
+        else     { u0 = mx(p0); v0 = mz(fixedPx); u1 = mx(p1); v1 = mz(fixedPx); }
+        var seg = wallSeg(u0, v0, u1, v1, WALL_H, T, 0xdde5f1);
+        if (seg) root.add(seg);
+      }
+    }
+  }
+
+  /* 洗漱台：公共盥洗室里那一排洗手盆（照片里右侧 4 个白盆）。
+     数据：{ kind:'basin', x1,y1,x2,y2, n } */
+  function buildFixtures(list) {
+    for (var i = 0; i < list.length; i++) {
+      var f = list[i];
+      var x1 = mx(f.x1), x2 = mx(f.x2), z1 = mz(f.y1), z2 = mz(f.y2);
+      var w = x2 - x1, d = z2 - z1;
+      if (w <= 0 || d <= 0) continue;
+      // 台面
+      root.add(box(w, 0.10, d, (x1 + x2) / 2, 0.14 + 0.78, (z1 + z2) / 2, mat(0xeef2f7, 0.55)));
+      // 台下柜
+      root.add(box(w * 0.96, 0.62, d * 0.9, (x1 + x2) / 2, 0.14 + 0.42, (z1 + z2) / 2, mat(0xd8e0ea, 0.7)));
+      var n = f.n || 4;
+      var along = (w >= d);
+      for (var k = 0; k < n; k++) {
+        var tt = (k + 0.5) / n;
+        var bx = along ? (x1 + w * tt) : (x1 + w / 2);
+        var bz = along ? (z1 + d / 2) : (z1 + d * tt);
+        var bowl = new THREE.Mesh(
+          new THREE.CylinderGeometry(Math.min(w, d) * 0.20, Math.min(w, d) * 0.15, 0.12, 16),
+          mat(0xffffff, 0.35));
+        bowl.position.set(bx, 0.14 + 0.86, bz);
+        bowl.castShadow = true;
+        root.add(bowl);
+      }
+    }
+  }
+
+  /* 楼梯：踏步沿 y 排列、逐级升高，视觉上能看出"这段有楼梯"。
+     楼梯间本身的四面墙（含门洞）由 buildRoom 按 kind:'stair' 建好，
+     这里只铺踏步，不再自己加边墙 —— 以前自己加边墙会把门洞堵死。 */
+  function buildStairFlights(list) {
+    for (var i = 0; i < list.length; i++) {
+      var st = list[i];
+      var x1 = mx(st.x1), x2 = mx(st.x2), z1 = mz(st.y1), z2 = mz(st.y2);
+      root.add(slab(x1, z1, x2, z2, 0xcfd7e2, 0.14, 0.02));
+
+      var tp = st.tread || 9;
+      var isEW = (st.dir === 'EW');
+      var along = isEW ? (st.x2 - st.x1) : (st.y2 - st.y1);
+      var n = Math.max(3, Math.floor(along / tp));
+      var rise = Math.min(0.030, 1.05 / n);        // 顶层不高于 1.05m，不挡后面的房间
+      for (var k = 0; k < n; k++) {
+        var h = 0.06 + k * rise;
+        var col = (k % 2 === 0) ? 0xe2e8f1 : 0xc0c9d8;
+        if (isEW) {
+          // 踏步沿 x 排列：梯段沿东西方向跑（东侧那部双跑楼梯就是这样画的）
+          var dxs = (x2 - x1) / n;
+          root.add(box(dxs*0.92, h, z2-z1-0.08,
+                       x1 + k*dxs + dxs/2, 0.14 + h/2, (z1+z2)/2, mat(col, 0.92)));
+        } else {
+          var dz = (z2 - z1) / n;
+          root.add(box(x2-x1-0.08, h, dz*0.92,
+                       (x1+x2)/2, 0.14 + h/2, z1 + k*dz + dz/2, mat(col, 0.92)));
+        }
+      }
+      // 靠外侧（不是门洞那一侧）加一道矮扶手，提示这是楼梯间而不是普通房间
+      var rail = isEW
+        ? wallSeg(x1, z1 + 0.12, x2, z1 + 0.12, Math.min(WALL_H, 1.02), 0.08, 0xd3dbe7)
+        : wallSeg(x1 + 0.12, z1, x1 + 0.12, z2, Math.min(WALL_H, 1.02), 0.08, 0xd3dbe7);
+      if (rail) root.add(rail);
+    }
+  }
+
+  /* 墙体与实心区域：楼梯再往左"一片墙"，墙外是实体（不可通行） */
+  function buildSolids(list) {
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      var x1 = mx(s.x1), x2 = mx(s.x2), z1 = mz(s.y1), z2 = mz(s.y2);
+      if (s.kind === 'wall') {
+        var cxw = (x1 + x2) / 2;
+        var w = wallSeg(cxw, z1, cxw, z2, WALL_H, 0.32, WALL_COL);
+        if (w) root.add(w);
+      } else {
+        root.add(slab(x1, z1, x2, z2, 0xa7b1bf, 0.14, 0.04));
+      }
+    }
+  }
+
+  /* 建天井：井壁 + 井底 + 井口护栏 */
+  function buildVoid() {
+    var A = VOID;
+    var w = A.x2 - A.x1, d = A.z2 - A.z1;
+    var cx = (A.x1 + A.x2)/2, cz = (A.z1 + A.z2)/2;
+
+    // 井底：首层地面（暖灰米色地砖），从三楼望下去能看到
+    root.add(box(w, 0.3, d, cx, -WELL_D - 0.15, cz, mat(0xa89e8c, 0.96)));
+
+    // 井壁分三段，越往下越暗 —— 这是"深"的错觉来源
+    var bands = [
+      [ 0,         -1.3,     0x8e9bad],
+      [-1.3,       -2.6,     0x6a7688],
+      [-2.6,   -WELL_D,      0x454f61]
+    ];
+    for (var b = 0; b < bands.length; b++) {
+      var y0 = bands[b][0], y1 = bands[b][1], col = bands[b][2];
+      var h = y0 - y1, ym = (y0 + y1)/2;
+      root.add(box(WELL_T, h, d - WELL_T*2, A.x1 + WELL_T/2, ym, cz, mat(col, 0.95)));
+      root.add(box(WELL_T, h, d - WELL_T*2, A.x2 - WELL_T/2, ym, cz, mat(col, 0.95)));
+      root.add(box(w - WELL_T*2, h, WELL_T, cx, ym, A.z1 + WELL_T/2, mat(col, 0.95)));
+      root.add(box(w - WELL_T*2, h, WELL_T, cx, ym, A.z2 - WELL_T/2, mat(col, 0.95)));
+
+      // 分段处挑出一圈楼板边：暗示井壁后面还有下面几层
+      if (y1 > -WELL_D + 0.1) {
+        var LY = 0.22, LX = 0.9;
+        root.add(box(LX, LY, d - WELL_T*2, A.x1 + WELL_T + LX/2, y1 + LY/2, cz, mat(0xeef3fa, 0.9)));
+        root.add(box(LX, LY, d - WELL_T*2, A.x2 - WELL_T - LX/2, y1 + LY/2, cz, mat(0xeef3fa, 0.9)));
+        root.add(box(w - WELL_T*2, LY, LX, cx, y1 + LY/2, A.z1 + WELL_T + LX/2, mat(0xeef3fa, 0.9)));
+        root.add(box(w - WELL_T*2, LY, LX, cx, y1 + LY/2, A.z2 - WELL_T - LX/2, mat(0xeef3fa, 0.9)));
+      }
+    }
+
+    // 井口收边：让楼板切口有一圈亮边，洞口才清楚
+    var RIM = 0.34, RH = 0.10;
+    root.add(box(RIM, RH, d, A.x1 - RIM/2 + 0.01, 0.14 + RH/2, cz, mat(0xeef3fa, 0.9)));
+    root.add(box(RIM, RH, d, A.x2 + RIM/2 - 0.01, 0.14 + RH/2, cz, mat(0xeef3fa, 0.9)));
+    root.add(box(w + RIM*2, RH, RIM, cx, 0.14 + RH/2, A.z1 - RIM/2 + 0.01, mat(0xeef3fa, 0.9)));
+    root.add(box(w + RIM*2, RH, RIM, cx, 0.14 + RH/2, A.z2 + RIM/2 - 0.01, mat(0xeef3fa, 0.9)));
+
+    // 东侧是走廊，加一道玻璃护栏；其余三面贴着房间墙，不需要
+    var rz1 = A.z1 + 1.0, rz2 = A.z2 - 1.0;
+    var railX = A.x2 + 0.16;
+    var glassMat = new THREE.MeshStandardMaterial({
+      color:0xaed3ef, roughness:0.12, metalness:0,
+      transparent:true, opacity:0.30, depthWrite:false
+    });
+    var gh = box(0.07, 0.80, rz2 - rz1, railX, 0.14 + 0.40, (rz1 + rz2)/2, glassMat);
+    gh.castShadow = false;
+    root.add(gh);
+    root.add(box(0.17, 0.08, rz2 - rz1, railX, 0.14 + 0.84, (rz1 + rz2)/2, mat(0xd3dbe7, 0.45)));
+    var nn = Math.max(3, Math.round((rz2 - rz1)/6.5));
+    for (var k = 0; k <= nn; k++) {
+      root.add(box(0.15, 0.82, 0.15, railX, 0.14 + 0.41, rz1 + (rz2 - rz1)*k/nn, mat(0xd3dbe7, 0.45)));
+    }
+  }
+
+  var SILL_MAT = new THREE.MeshStandardMaterial({ color:0x7d5a3c, roughness:0.78 });
+
+  function buildRoom(r) {
+    var x1 = mx(r.x1), x2 = mx(r.x2), z1 = mz(r.y1), z2 = mz(r.y2);
+    var cx = (x1+x2)/2, cz = (z1+z2)/2;
+    var kind = KIND[r.kind] || KIND.room;
+
+    // open：被拆掉的那几面墙（整面敞开，不留墙、不留门框）。
+    // 楼板在敞开的那一面不再内缩，好让相邻房间的地面直接接上，中间不留缝。
+    var opList = r.open || [];
+    function opn(k) { return opList.indexOf(k) >= 0; }
+    var f = slab(x1 + (opn('W') ? 0 : 0.13), z1 + (opn('N') ? 0 : 0.13),
+                 x2 - (opn('E') ? 0 : 0.13), z2 - (opn('S') ? 0 : 0.13),
+                 kind.floor, 0.14, 0.06);
+    f.userData.rid = r.id;
+    root.add(f);
+    floorMeshes.push(f);
+
+    var T = 0.24;
+    var DW = r.doorW || 1.05;            // 门洞宽（米），按原图实测约 0.9m
+    var edges = [
+      { k:'N', x1:x1, z1:z1, x2:x2, z2:z1 },
+      { k:'S', x1:x1, z1:z2, x2:x2, z2:z2 },
+      { k:'W', x1:x1, z1:z1, x2:x1, z2:z2 },
+      { k:'E', x1:x2, z1:z1, x2:x2, z2:z2 }
+    ];
+
+    // 门不一定在墙正中：doorT (0~1) 指定门沿墙的位置，缺省 0.5 = 居中
+    var half = Math.min(DW/2, (x2-x1)*0.34);
+    var half2 = Math.min(DW/2, (z2-z1)*0.34);
+    var dcx = cx, dcz = cz;
+    if (r.doorT !== undefined && r.doorT !== null) {
+      var rawX = x1 + (x2-x1)*r.doorT;
+      var rawZ = z1 + (z2-z1)*r.doorT;
+      dcx = Math.min(x2-half, Math.max(x1+half, rawX));
+      dcz = Math.min(z2-half2, Math.max(z1+half2, rawZ));
+    }
+
+    var OPP = { N:'S', S:'N', W:'E', E:'W' };
+    var oppWin = r.win ? OPP[r.door] : null;
+
+    // ---- 墙面：门（全高洞口）和窗（带窗台的洞口）统一按"沿墙分段"生成 ----
+    // 这样同一面墙可以既开门又开窗，也不会出现"门一开就把同面墙的窗吞掉"的情况。
+    // door2：第二道门洞（单个对象或数组），用于两个房间共用一道墙的套间关系。
+    // winSides：指定某面墙开窗（单个对象或数组），用于"门旁边那扇窗"。
+    var d2list = [];
+    if (r.door2) d2list = (r.door2.length !== undefined) ? r.door2 : [r.door2];
+    var wlist = [];
+    if (r.winSides) wlist = (r.winSides.length !== undefined) ? r.winSides : [r.winSides];
+
+    var SILL_H = Math.min(0.62, WALL_H * 0.35);      // 窗台高
+    var HEAD_H = Math.min(1.42, WALL_H - 0.30);      // 窗顶高
+    var GM = new THREE.MeshStandardMaterial({
+      color: 0x66c2ea, emissive: 0x1f7ea6, emissiveIntensity: 1.05,
+      transparent: true, opacity: 0.78, roughness: 0.18, metalness: 0.05
+    });
+
+    // 沿墙铺一段实体墙（y0~y1 是高度范围，a/b 是沿墙方向的起止坐标）
+    function wallFill(e, isVert, a, b, y0, y1) {
+      if (b - a < 0.03 || y1 - y0 < 0.03) return;
+      var hh = y1 - y0;
+      if (isVert) root.add(box(T, hh, b - a, e.x1, y0 + hh / 2, (a + b) / 2, mat(WALL_COL, 0.9)));
+      else root.add(box(b - a, hh, T, (a + b) / 2, y0 + hh / 2, e.z1, mat(WALL_COL, 0.9)));
+    }
+
+    for (var i = 0; i < 4; i++) {
+      var e = edges[i];
+      // 这一面墙已被拆除（open）：整面敞开，不生成任何墙体、门槛或门扇
+      if (opn(e.k)) continue;
+      var isVert = (e.k === 'W' || e.k === 'E');
+      var lo = isVert ? z1 : x1, hi = isVert ? z2 : x2;
+      var span = hi - lo;
+
+      // 这条边上的所有洞口先收集齐，再一次性切段，避免洞口互相打架
+      var holes = [];
+      if (e.k === r.door) holes.push({ t: 'door', c: isVert ? dcz : dcx, h: isVert ? half2 : half, main: true });
+      for (var q = 0; q < d2list.length; q++) {
+        if (d2list[q].k !== e.k) continue;
+        var dw2 = d2list[q].w || 1.05;
+        var hd = Math.min(dw2 / 2, span * 0.34);
+        var t2 = (d2list[q].t === undefined || d2list[q].t === null) ? 0.5 : d2list[q].t;
+        holes.push({ t: 'door', c: Math.min(hi - hd, Math.max(lo + hd, lo + span * t2)), h: hd, main: false });
+      }
+      if (r.win && e.k === oppWin) {                 // win=true：门正对面那面墙开窗
+        holes.push({ t: 'win', c: (lo + hi) / 2, h: Math.min(span * 0.42, 3.0) });
+      }
+      for (var q3 = 0; q3 < wlist.length; q3++) {    // winSides：指定墙面开窗
+        if (wlist[q3].k !== e.k) continue;
+        var ww3 = wlist[q3].w || 2.0;
+        var hw3 = Math.min(ww3 / 2, span * 0.34);
+        var t3 = (wlist[q3].t === undefined || wlist[q3].t === null) ? 0.5 : wlist[q3].t;
+        holes.push({ t: 'win', c: Math.min(hi - hw3, Math.max(lo + hw3, lo + span * t3)), h: hw3 });
+      }
+      holes.sort(function (a, b) { return a.c - b.c; });
+
+      if (!holes.length) {
+        wallFill(e, isVert, lo, hi, 0, WALL_H);
+        continue;
+      }
+
+      var cur = lo;
+      for (var q2 = 0; q2 < holes.length; q2++) {
+        var ho = holes[q2];
+        var s = Math.max(lo, ho.c - ho.h), t = Math.min(hi, ho.c + ho.h);
+        if (s - cur > 0.02) wallFill(e, isVert, cur, s, 0, WALL_H);
+
+        if (ho.t === 'door') {
+          if (ho.main) {
+            // 门槛：门洞位置铺一条深色石条，俯视时一眼看出门开在哪面墙
+            if (isVert) {
+              var thW = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.02, t - s), SILL_MAT);
+              thW.position.set(e.x1, 0.213, (s + t) / 2);
+              root.add(thW);
+            } else {
+              var thN = new THREE.Mesh(new THREE.BoxGeometry(t - s, 0.02, 0.30), SILL_MAT);
+              thN.position.set((s + t) / 2, 0.213, e.z1);
+              root.add(thN);
+            }
+          }
+        } else {
+          // 窗：窗台段 + 窗楣段 + 中间的玻璃
+          wallFill(e, isVert, s, t, 0, SILL_H);
+          wallFill(e, isVert, s, t, HEAD_H, WALL_H);
+          var gh = HEAD_H - SILL_H;
+          if (isVert) root.add(box(0.07, gh, (t - s) - 0.05, e.x1, SILL_H + gh / 2, (s + t) / 2, GM));
+          else root.add(box((t - s) - 0.05, gh, 0.07, (s + t) / 2, SILL_H + gh / 2, e.z1, GM));
+        }
+        cur = Math.max(cur, t);
+      }
+      if (hi - cur > 0.02) wallFill(e, isVert, cur, hi, 0, WALL_H);
+    }
+
+    // 门扇：swing='in' 朝房间内、'out' 朝走廊/外侧；hinge 选铰链端；leaf=2 双开
+    if (r.swing && !opn(r.door)) {
+      doorLeaf(r.door, x1, x2, z1, z2, dcx, dcz, half*2, half2*2,
+               { swing: r.swing, hinge: r.hinge, leaf: r.leaf });
+    }
+
+    var w2 = x2-x1, d2 = z2-z1;
+    if (w2 > 2.6 && d2 > 2.2 && r.kind !== 'toilet') {
+      var fw = Math.min(w2*0.52, 5.5), fd = Math.min(d2*0.26, 1.3);
+      root.add(box(fw, 0.8, fd, cx, 0.20+0.40, cz - d2*0.30, mat(0x9fadc4, 0.85)));
+      if (d2 > 5.0) root.add(box(fw*0.74, 0.8, fd, cx, 0.20+0.40, cz + d2*0.30, mat(0xb0bccd, 0.85)));
+    }
+
+    if (w2 > 2.4 && d2 > 1.8) addFloorLabel(r.id, cx, cz, w2);
+  }
+
+  /* 门扇：从铰链那一端起，朝一侧转开 72°。
+     - swing = 'in'  朝房间内部开（不挡走廊）
+     - swing = 'out' 朝走廊/外侧开（公共卫生间、楼梯间常这样做）
+     - hinge = 'hi'  把铰链放到门洞的较大坐标端，用来做"面对面各开一扇"的对开门
+     - leaf  = 2     双开门（两片各占一半，从两端向中间转开） */
+  var DOOR_OPEN = 72 * Math.PI / 180;
+
+  function doorLeaf(kind, x1, x2, z1, z2, dcx, dcz, wAlongX, wAlongZ, opt) {
+    opt = opt || {};
+    var h = Math.min(1.45, WALL_H - 0.28);
+    var isV = (kind === 'W' || kind === 'E');
+    var total = isV ? wAlongZ : wAlongX;
+    if (total < 0.2) return;
+
+    // 房间内侧的法线方向；swing='out' 就反一个号
+    var nx = 0, nz = 0;
+    if (kind === 'N') nz = 1; else if (kind === 'S') nz = -1;
+    else if (kind === 'W') nx = 1; else nx = -1;
+    if (opt.swing === 'out') { nx = -nx; nz = -nz; }
+
+    var leaves = (opt.leaf === 2) ? 2 : 1;
+    var dw = total / leaves;                       // 每片门扇的宽度
+    var c = isV ? dcz : dcx;
+    var cs = Math.cos(DOOR_OPEN), sn = Math.sin(DOOR_OPEN);
+
+    for (var i = 0; i < leaves; i++) {
+      var hx, hz, ux, uz;
+      if (isV) {
+        // 竖墙：门扇沿 z 方向展开，法线在 x 方向
+        var sgn = (leaves === 2) ? (i === 0 ? 1 : -1) : (opt.hinge === 'hi' ? -1 : 1);
+        hz = c + (leaves === 2 ? (i === 0 ? -total/2 : total/2)
+                               : (opt.hinge === 'hi' ? total/2 : -total/2));
+        hx = (kind === 'W') ? x1 : x2;
+        ux = 0; uz = sgn;
+      } else {
+        // 横墙：门扇沿 x 方向展开，法线在 z 方向
+        var sgn2 = (leaves === 2) ? (i === 0 ? 1 : -1) : (opt.hinge === 'hi' ? -1 : 1);
+        hx = c + (leaves === 2 ? (i === 0 ? -total/2 : total/2)
+                               : (opt.hinge === 'hi' ? total/2 : -total/2));
+        hz = (kind === 'N') ? z1 : z2;
+        ux = sgn2; uz = 0;
+      }
+      // 自由端 = 铰链 + 沿墙分量 + 法向分量
+      var fx = hx + ux * dw * cs + nx * dw * sn;
+      var fz = hz + uz * dw * cs + nz * dw * sn;
+      var pane = wallSeg(hx, hz, fx, fz, h, 0.06, 0x6b4a2e, 0.14);
+      if (pane) { pane.castShadow = true; root.add(pane); }
+    }
+  }
+
+  /* 带窗的墙：在墙上真开一个窗洞（窗台 0.62m、窗顶 1.42m），洞里装半透明玻璃。
+     这样做的好处：从任何俯视角度都能看见"这里有一扇窗"，而不是被墙自己挡住。 */
+  function windowWall(kind, x1, x2, z1, z2, T) {
+    var H = WALL_H;
+    var sill = Math.min(0.62, H*0.35);
+    var head = Math.min(1.42, H - 0.30);
+    if (head <= sill + 0.12) return;
+    var cx = (x1+x2)/2, cz = (z1+z2)/2;
+    var m = mat(WALL_COL, 0.9);
+    var gm = new THREE.MeshStandardMaterial({
+      color: 0x66c2ea, emissive: 0x1f7ea6, emissiveIntensity: 1.05,
+      transparent: true, opacity: 0.78, roughness: 0.18, metalness: 0.05
+    });
+
+    if (kind === 'N' || kind === 'S') {
+      var z = (kind === 'N') ? z1 : z2;
+      var wl = Math.min((x2-x1)*0.60, 5.0);
+      if (wl < 0.8) { var ww = wallSeg(x1, z1, x2, z2, H, T, WALL_COL); if (ww) root.add(ww); return; }
+      var a = cx - wl/2, b = cx + wl/2;
+      if (a - x1 > 0.15) root.add(box(a-x1, H, T, (x1+a)/2, 0.14 + H/2, z, m));
+      if (x2 - b > 0.15) root.add(box(x2-b, H, T, (b+x2)/2, 0.14 + H/2, z, m));
+      root.add(box(wl, sill, T, cx, 0.14 + sill/2, z, m));                       // 窗台
+      root.add(box(wl, H-head, T, cx, 0.14 + (head+H)/2, z, m));                 // 窗楣
+      root.add(box(wl-0.06, head-sill, 0.07, cx, 0.14 + (sill+head)/2, z, gm));  // 玻璃
+    } else {
+      var x = (kind === 'W') ? x1 : x2;
+      var wl2 = Math.min((z2-z1)*0.60, 5.0);
+      if (wl2 < 0.8) { var ww2 = wallSeg(x1, z1, x2, z2, H, T, WALL_COL); if (ww2) root.add(ww2); return; }
+      var a2 = cz - wl2/2, b2 = cz + wl2/2;
+      if (a2 - z1 > 0.15) root.add(box(T, H, a2-z1, x, 0.14 + H/2, (z1+a2)/2, m));
+      if (z2 - b2 > 0.15) root.add(box(T, H, z2-b2, x, 0.14 + H/2, (b2+z2)/2, m));
+      root.add(box(T, sill, wl2, x, 0.14 + sill/2, cz, m));
+      root.add(box(T, H-head, wl2, x, 0.14 + (head+H)/2, cz, m));
+      root.add(box(0.07, head-sill, wl2-0.06, x, 0.14 + (sill+head)/2, cz, gm));
+    }
+  }
+
+  function addFloorLabel(text, cx, cz, wm) {
+    var cv = document.createElement('canvas');
+    cv.width = 256; cv.height = 128;
+    var g = cv.getContext('2d');
+    g.fillStyle = 'rgba(255,255,255,0.90)';
+    var rad = 22, x0 = 38, y0 = 30, w0 = 180, h0 = 68;
+    g.beginPath();
+    g.moveTo(x0+rad, y0); g.lineTo(x0+w0-rad, y0);
+    g.quadraticCurveTo(x0+w0, y0, x0+w0, y0+rad);
+    g.lineTo(x0+w0, y0+h0-rad); g.quadraticCurveTo(x0+w0, y0+h0, x0+w0-rad, y0+h0);
+    g.lineTo(x0+rad, y0+h0); g.quadraticCurveTo(x0, y0+h0, x0, y0+h0-rad);
+    g.lineTo(x0, y0+rad); g.quadraticCurveTo(x0, y0, x0+rad, y0);
+    g.closePath(); g.fill();
+
+    g.fillStyle = '#2b3648';
+    g.font = '700 46px "PingFang SC","Microsoft YaHei",sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, 128, 66);
+
+    var tex = new THREE.CanvasTexture(cv);
+    tex.encoding = THREE.sRGBEncoding;
+    tex.minFilter = THREE.LinearFilter;
+    var m = new THREE.MeshBasicMaterial({ map:tex, transparent:true, depthWrite:false });
+    var lw = Math.max(1.8, Math.min(wm*0.8, 5.2));
+    var pl = new THREE.Mesh(new THREE.PlaneGeometry(lw, lw*0.5), m);
+    pl.rotation.x = -Math.PI/2;
+    pl.position.set(cx, 0.23, cz);
+    pl.renderOrder = 3;
+    root.add(pl);
+  }
+
+  /* ---------------- 寻路栅格 ----------------
+     ★ 2026-11-11 改：栅格改成「每层各一份」，缓存在 GRIDS[fid]。
+     原来只有一份全局 blocked，换层就重建 —— 那样跨楼层算路是不可能的
+     （算到另一层时栅格已经是那一层的了，起点/终点都不在同一张图上）。
+     现在 GW/GH/blocked 仍然保留为「当前层」的别名，所有老函数一行不用改；
+     要算别的层时用 withGrid(fid, fn) 临时借用一下，出来自动还回去。 */
+  var STEP = 6;
+  var GW = 0, GH = 0;
+  var blocked = new Uint8Array(1);
+  var PAD = 9;
+  var GRIDS = {};                 // fid -> { GW, GH, blocked }
+
+  /* 可走地面的定义（2026-11-11 重写，务必按这个来）：
+     ★ 楼板只存在于「走廊 + 支廊」上，其余一律不可走。
+
+     以前是"默认全图可走，只把房间挖成障碍"，于是楼体缺口、房间之间的空白、
+     楼外广场全成了路 —— 寻路会绕着房子外面走一圈，再从背面"穿墙"进屋，
+     334/335 就是这么被走进去的。
+
+     现在：① 先全图挡死 → ② 把 corridors / spurs 挖开 = 可走地面
+           → ③ 把 wallRuns（补墙段）挡回去 → ④ 楼梯、中庭、楼体缺口保持挡死。
+     这样"画面上有墙的地方，寻路里也一定过不去"，视觉和数据用的是同一份几何。
+
+     ★ 2026-11-11 改：不再依赖全局 D/blocked，改成 rasterize(dd, buf) ——
+     传哪一层的房间数据就栅格化哪一层，结果写进 GRIDS[fid]。 */
+  function rasterize(dd, buf) {
+    var g = { GW: Math.ceil(dd.imageWidth / STEP), GH: Math.ceil(dd.imageHeight / STEP), blocked: buf };
+    var GWl = g.GW, GHl = g.GH, bl = g.blocked;
+    function fillRect(x1, y1, x2, y2, v) {
+      var gx1 = Math.max(0, Math.floor(x1/STEP));
+      var gx2 = Math.min(GWl-1, Math.ceil(x2/STEP));
+      var gy1 = Math.max(0, Math.floor(y1/STEP));
+      var gy2 = Math.min(GHl-1, Math.ceil(y2/STEP));
+      for (var gy = gy1; gy <= gy2; gy++) {
+        var base = gy*GWl;
+        for (var gx = gx1; gx <= gx2; gx++) bl[base+gx] = v;
+      }
+    }
+    var i;
+    // ① 全图默认没有楼板
+    for (i = 0; i < bl.length; i++) bl[i] = 1;
+
+    // ② 走廊、支廊 = 可走地面
+    var walk = [];
+    if (dd.corridors) walk = walk.concat(dd.corridors);
+    if (dd.spurs) walk = walk.concat(dd.spurs);
+    for (i = 0; i < walk.length; i++)
+      fillRect(walk[i].x1, walk[i].y1, walk[i].x2, walk[i].y2, 0);
+
+    // ③ 补墙段：视觉上是实墙，寻路里也必须挡人（沿线的窄带全部挡死）。
+    //    注意顺序 —— 必须在走廊挖开之后，否则会被走廊重新清空。
+    if (dd.wallRuns) for (i = 0; i < dd.wallRuns.length; i++) {
+      var w = dd.wallRuns[i];
+      fillRect(Math.min(w.x1, w.x2) - 2, Math.min(w.y1, w.y2) - 2,
+               Math.max(w.x1, w.x2) + 2, Math.max(w.y1, w.y2) + 2, 1);
+    }
+
+    // ④ 不是地面的东西（本来就全挡死，这里显式写出来，避免以后误开）
+    if (dd.atrium) fillRect(dd.atrium.x1, dd.atrium.y1, dd.atrium.x2, dd.atrium.y2, 1);
+    if (dd.exterior) for (i = 0; i < dd.exterior.length; i++)
+      fillRect(dd.exterior[i].x1, dd.exterior[i].y1, dd.exterior[i].x2, dd.exterior[i].y2, 1);
+    if (dd.stairs) for (i = 0; i < dd.stairs.length; i++)
+      fillRect(dd.stairs[i].x1, dd.stairs[i].y1, dd.stairs[i].x2, dd.stairs[i].y2, 1);
+    if (dd.solids) for (i = 0; i < dd.solids.length; i++)
+      fillRect(dd.solids[i].x1, dd.solids[i].y1, dd.solids[i].x2, dd.solids[i].y2, 1);
+    // 房间内部不是路（只能走到门口），所以不用挖
+    return g;
+  }
+
+  /* 建/取某层的栅格缓存；没有就现建一份 */
+  function gridOf(fid) {
+    var g = GRIDS[fid];
+    if (!g) {
+      var dd = FLOORS[fid];
+      if (!dd) return null;
+      g = rasterize(dd, new Uint8Array(Math.ceil(dd.imageWidth/STEP) * Math.ceil(dd.imageHeight/STEP)));
+      GRIDS[fid] = g;
+    }
+    return g;
+  }
+
+  /* 临时切到某层的栅格跑一段计算，结束时把「当前层」的别名换回来。
+     注意：这里只借栅格，不动 D/S/O —— 老代码里凡是同时用到 MX()
+     和 D 的地方（doorCandidates / facePoint）都要显式传数据，见 crossFacePoint。 */
+  function withGrid(fid, fn) {
+    var g = gridOf(fid);
+    if (!g) return null;
+    var save = { GW: GW, GH: GH, blocked: blocked };
+    GW = g.GW; GH = g.GH; blocked = g.blocked;
+    try {
+      return fn();
+    } finally {
+      GW = save.GW; GH = save.GH; blocked = save.blocked;
+    }
+  }
+
+  /* 把当前层的栅格别名指向 CUR_FLOOR（换层时调用） */
+  function useGridOf(fid) {
+    var g = gridOf(fid);
+    if (!g) return;
+    GW = g.GW; GH = g.GH; blocked = g.blocked;
+  }
+
+  function isFree(gx, gy) {
+    if (gx < 0 || gy < 0 || gx >= GW || gy >= GH) return false;
+    return blocked[gy*GW+gx] === 0;
+  }
+  function pxToGrid(px, py) { return [Math.round(px/STEP), Math.round(py/STEP)]; }
+  function gridToPx(gx, gy) { return { x:gx*STEP, y:gy*STEP }; }
+
+  /* 就近找一个可走格。maxRad 是用来防止"翻墙"的：
+     搜索半径太大时，一个落在墙里/房间里的点会被吸附到墙另一侧的可走格上，
+     看上去就是"穿过这堵墙过去了"。找门口时只给很小的半径（0.6m 以内），
+     找不到就老实报"不通"，绝不跨墙吸附。 */
+  function nearestFree(px, py, maxRad) {
+    var lim = (maxRad === undefined) ? 45 : maxRad;
+    var g0 = pxToGrid(px, py);
+    if (isFree(g0[0], g0[1])) return g0;
+    for (var rad = 1; rad <= lim; rad++) {
+      for (var dy = -rad; dy <= rad; dy++) {
+        for (var dx = -rad; dx <= rad; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== rad) continue;
+          if (isFree(g0[0]+dx, g0[1]+dy)) return [g0[0]+dx, g0[1]+dy];
+        }
+      }
+    }
+    return null;
+  }
+
+  function astar(s, t) {
+    var N = GW*GH;
+    var gScore = new Float32Array(N);
+    for (var i = 0; i < N; i++) gScore[i] = Infinity;
+    var came = new Int32Array(N);
+    for (var j = 0; j < N; j++) came[j] = -1;
+    var closed = new Uint8Array(N);
+    var fScore = new Float32Array(N);
+    for (var k = 0; k < N; k++) fScore[k] = Infinity;
+
+    var start = s[1]*GW + s[0], goal = t[1]*GW + t[0];
+    if (start === goal) return [s];
+
+    var open = [start];
+    gScore[start] = 0;
+    fScore[start] = Math.hypot(s[0]-t[0], s[1]-t[1]);
+
+    var dirs = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+    while (open.length) {
+      var bi = 0, bf = fScore[open[0]];
+      for (var m = 1; m < open.length; m++) {
+        if (fScore[open[m]] < bf) { bf = fScore[open[m]]; bi = m; }
+      }
+      var cur = open[bi];
+      open.splice(bi, 1);
+      if (cur === goal) {
+        var path = [], c = cur;
+        while (c !== -1) { path.push([c % GW, (c / GW) | 0]); c = came[c]; }
+        path.reverse();
+        return path;
+      }
+      if (closed[cur]) continue;
+      closed[cur] = 1;
+
+      var cxg = cur % GW, cyg = (cur / GW) | 0;
+      for (var d = 0; d < 8; d++) {
+        var nx = cxg + dirs[d][0], ny = cyg + dirs[d][1];
+        if (!isFree(nx, ny)) continue;
+        var nidx = ny*GW + nx;
+        if (closed[nidx]) continue;
+        var cost = (d < 4) ? 1 : 1.4142;
+        var ng = gScore[cur] + cost;
+        if (ng < gScore[nidx]) {
+          gScore[nidx] = ng;
+          came[nidx] = cur;
+          fScore[nidx] = ng + Math.hypot(nx-t[0], ny-t[1]);
+          open.push(nidx);
+        }
+      }
+      if (open.length > 80000) break;
+    }
+    return null;
+  }
+
+  function lineFree(a, b) {
+    var dx = b.x-a.x, dy = b.y-a.y;
+    var dist = Math.hypot(dx, dy);
+    var n = Math.ceil(dist / (STEP*0.8));
+    for (var i = 1; i < n; i++) {
+      var t = i/n;
+      var g = pxToGrid(a.x+dx*t, a.y+dy*t);
+      if (!isFree(g[0], g[1])) return false;
+    }
+    return true;
+  }
+
+  function simplify(pts) {
+    if (pts.length <= 2) return pts;
+    var out = [pts[0]];
+    var i = 0;
+    while (i < pts.length-1) {
+      var j = pts.length-1;
+      for (; j > i+1; j--) if (lineFree(pts[i], pts[j])) break;
+      out.push(pts[j]);
+      i = j;
+    }
+    return out;
+  }
+
+  /* ---------------- 路线渲染 ---------------- */
+  var routeGroup = new THREE.Group();
+  root.add(routeGroup);
+  var ROUTE_Y = 0.55, ROUTE_R = 0.42;
+
+  function chamfer(pts, radius, seg) {
+    if (pts.length < 3) return pts.slice();
+    var out = [{x:pts[0].x, y:pts[0].y}];
+    for (var i = 1; i < pts.length-1; i++) {
+      var p0 = pts[i-1], p1 = pts[i], p2 = pts[i+1];
+      var v1x = p0.x-p1.x, v1y = p0.y-p1.y;
+      var v2x = p2.x-p1.x, v2y = p2.y-p1.y;
+      var l1 = Math.hypot(v1x,v1y) || 1, l2 = Math.hypot(v2x,v2y) || 1;
+      var rad = Math.min(radius, l1*0.45, l2*0.45);
+      var ax = p1.x+v1x/l1*rad, ay = p1.y+v1y/l1*rad;
+      var bx = p2.x+v2x/l2*rad, by = p2.y+v2y/l2*rad;
+      for (var s = 0; s <= seg; s++) {
+        var t = s/seg, u = 1-t;
+        out.push({ x:u*u*ax+2*u*t*p1.x+t*t*bx, y:u*u*ay+2*u*t*p1.y+t*t*by });
+      }
+    }
+    var L = pts[pts.length-1];
+    out.push({x:L.x, y:L.y});
+    return out;
+  }
+
+  /* opts: { start:false|true, end:false|true } —— 跨层路线里"起点"可能不在本层，
+     那种段就不要再画绿点（否则 5F 的楼梯口会被误标成"你在这里"）。 */
+  function drawRoute(pxPts, opts) {
+    opts = opts || {};
+    while (routeGroup.children.length) {
+      var o = routeGroup.children.pop();
+      if (o.geometry) o.geometry.dispose();
+    }
+    if (!pxPts || pxPts.length < 2) return;
+
+    var m = [];
+    for (var i = 0; i < pxPts.length; i++) m.push({ x: mx(pxPts[i].x), y: mz(pxPts[i].y) });
+
+    var sm = chamfer(m, 1.8, 8);
+    var v3 = [];
+    for (var j = 0; j < sm.length; j++) v3.push(new THREE.Vector3(sm[j].x, ROUTE_Y, sm[j].y));
+
+    var curve = new THREE.CatmullRomCurve3(v3, false, 'centripetal', 0.5);
+    var tubeMat = new THREE.MeshStandardMaterial({
+      color:0x0fd66a, emissive:0x09b558, emissiveIntensity:0.75,
+      roughness:0.4, metalness:0, transparent:true, opacity:0.97
+    });
+    var tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 460, ROUTE_R, 16, false), tubeMat);
+    tube.castShadow = true;
+    routeGroup.add(tube);
+
+    if (opts.start !== false) {
+      var sMat = new THREE.MeshStandardMaterial({ color:0x0f9d58, emissive:0x0b7d45, emissiveIntensity:0.5, roughness:0.4 });
+      var s0 = m[0];
+      var disk = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 0.32, 32), sMat);
+      disk.position.set(s0.x, 0.42, s0.y); disk.castShadow = true;
+      routeGroup.add(disk);
+      var ring = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.18, 10, 44),
+                                new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.9 }));
+      ring.rotation.x = -Math.PI/2; ring.position.set(s0.x, 0.43, s0.y);
+      routeGroup.add(ring);
+    }
+
+    if (opts.end !== false) {
+      var eMat = new THREE.MeshStandardMaterial({ color:0xe5342a, emissive:0xc0241b, emissiveIntensity:0.4, roughness:0.4 });
+      var e0 = m[m.length-1];
+      var pin = new THREE.Mesh(new THREE.SphereGeometry(0.85, 24, 18), eMat);
+      pin.position.set(e0.x, 1.65, e0.y); pin.castShadow = true;
+      routeGroup.add(pin);
+      var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 1.3, 12), eMat);
+      stem.position.set(e0.x, 0.85, e0.y);
+      routeGroup.add(stem);
+    }
+  }
+
+  /* ---------------- 文字指引 ---------------- */
+  function renderSteps(mPts, room, startName) {
+    var el = document.getElementById('steps');
+    document.getElementById('destName').textContent = room.name + '（' + room.id + '）';
+
+    var total = 0;
+    for (var i = 0; i < mPts.length-1; i++)
+      total += Math.hypot(mPts[i+1].x-mPts[i].x, mPts[i+1].y-mPts[i].y);
+
+    var html = '<div class="st start"><div class="ic">●</div><div class="tx"><em>当前位置</em>　' + startName + '</div></div>';
+    html += '<div class="st"><div class="ic">◷</div><div class="tx">全程约 <em>' + Math.round(total) +
+            '</em> 米 · 步行约 ' + Math.max(1, Math.round(total/1.15/60)) + ' 分钟</div></div>';
+
+    for (var k = 0; k < mPts.length-1; k++) {
+      var len = Math.hypot(mPts[k+1].x-mPts[k].x, mPts[k+1].y-mPts[k].y);
+      if (len < 0.9) continue;
+      if (k > 0) {
+        var a1 = Math.atan2(mPts[k].y-mPts[k-1].y, mPts[k].x-mPts[k-1].x);
+        var a2 = Math.atan2(mPts[k+1].y-mPts[k].y, mPts[k+1].x-mPts[k].x);
+        var d = a2-a1;
+        while (d > Math.PI) d -= Math.PI*2;
+        while (d < -Math.PI) d += Math.PI*2;
+        var word = Math.abs(d) < 0.35 ? '继续直行' : (d > 0 ? '右转' : '左转');
+        var icon = Math.abs(d) < 0.35 ? '↑' : (d > 0 ? '↱' : '↰');
+        html += '<div class="st"><div class="ic">'+icon+'</div><div class="tx"><em>'+word+'</em></div></div>';
+      }
+      html += '<div class="st"><div class="ic">↑</div><div class="tx">直行 <em>' + Math.round(len) + '</em> 米</div></div>';
+    }
+    html += '<div class="st end"><div class="ic">◆</div><div class="tx">到达 <em>' + room.name + '</em></div></div>';
+    el.innerHTML = html;
+  }
+
+  /* ---------------- 导航主流程 ---------------- */
+  var START_PX = { x: 1150, y: 742 };
+  var LAST_PTS = null;   // 最近一次规划的路线点（像素），供自检用
+  var START_NAME = '3F 大厅东侧';
+
+  /* 每层的"当前位置"（板子上那个红点）：数据里给了 startPx 就用数据的 */
+  function setStart() {
+    START_PX = (D.startPx && D.startPx.x !== undefined)
+      ? { x: D.startPx.x, y: D.startPx.y } : { x: 1150, y: 742 };
+    START_NAME = (FLOOR_LABEL[CUR_FLOOR] || '') + ' ' + (D.startName || '大厅东侧');
+  }
+
+  /* 房间实际开着的面：主门（door/doorT）+ door2（同一面墙上的第二个洞口）。
+     ★ 只认这几个面，绝不"四面都试一遍"。
+     以前那种写法会在声明的门被挡住时偷偷改用另一面没有门的墙，
+     于是路由会绕到房子背面、从实墙"进去" —— 334/335 就是这样穿墙直达的。 */
+  function openingsOf(r) {
+    var out = [{ k: r.door || 'S', t: (r.doorT === undefined || r.doorT === null) ? 0.5 : r.doorT }];
+    var d2 = r.door2;
+    if (d2) {
+      if (!d2.length) d2 = [d2];
+      for (var i = 0; i < d2.length; i++)
+        out.push({ k: d2[i].k, t: (d2[i].t === undefined || d2[i].t === null) ? 0.5 : d2[i].t });
+    }
+    // open：整面墙拆掉之后，这一面也是真开口（没有门扇，但人能过去）
+    var op = r.open || [];
+    for (var j = 0; j < op.length; j++) out.push({ k: op[j], t: 0.5 });
+    return out;
+  }
+
+  /* 某一面墙外侧 44px 的门口点（44px ≈ 2m，落在走廊里） */
+  function facePoint(r, k, t) {
+    var out = 44;
+    if (k === 'N' || k === 'S')
+      return { x: r.x1 + (r.x2 - r.x1) * t, y: (k === 'N' ? r.y1 - out : r.y2 + out), k: k };
+    return { x: (k === 'W' ? r.x1 - out : r.x2 + out), y: r.y1 + (r.y2 - r.y1) * t, k: k };
+  }
+
+  /* 返回按优先级排好的门口候选点。
+     套间（via）只返回自己那道门 —— 它的门开在宿主房间里，不走公共走廊。 */
+  function doorCandidates(r) {
+    var os = openingsOf(r), out2 = [];
+    for (var i = 0; i < os.length; i++) {
+      var p = facePoint(r, os[i].k, os[i].t);
+      var g = pxToGrid(p.x, p.y);
+      if (isFree(g[0], g[1])) out2.push(p);
+    }
+    // 声明的那一面也不在走廊里：只把"那一面"退回给调用方，交给小半径就近找，
+    // 找到找不到都由调用方判定，绝不换成别的面。
+    if (!out2.length) out2.push(facePoint(r, r.door || 'S',
+      (r.doorT === undefined || r.doorT === null) ? 0.5 : r.doorT));
+    return out2;
+  }
+  function doorPoint(r) { return doorCandidates(r)[0]; }
+
+  /* 只负责"从起点走到某房间的门口"，返回折线（图片像素坐标），走不通返回 null。
+     就近吸附半径限制在 6 格（36px ≈ 1.6m）：宁可报不通，也不许跨墙吸附。 */
+  function routeToDoor(room) {
+    var from = nearestFree(START_PX.x, START_PX.y, 60);
+    if (!from) return null;
+    var cands = doorCandidates(room);
+    for (var c = 0; c < cands.length; c++) {
+      var t = nearestFree(cands[c].x, cands[c].y, 6);
+      if (!t) continue;
+      var p = astar(from, t);
+      if (!p) continue;
+      var pts = [];
+      for (var i = 0; i < p.length; i++) pts.push(gridToPx(p[i][0], p[i][1]));
+      pts = simplify(pts);
+      var last = pts[pts.length - 1];
+      if (Math.hypot(last.x - cands[c].x, last.y - cands[c].y) > STEP * 1.5) pts.push(cands[c]);
+      return pts;
+    }
+    return null;
+  }
+
+  function findRoom(id) {
+    for (var i = 0; i < D.rooms.length; i++) if (D.rooms[i].id === id) return D.rooms[i];
+    return null;
+  }
+
+  /* ================= 跨楼层 =================
+
+     三层用的是同一套坐标系（同一个 originPx / pxPerMeter），所以像素坐标可以跨层直接比较，
+     唯一"不通"的是楼板本身：每层的可走地面只在自己的栅格里。
+
+     跨层的物理通道是楼梯间。楼梯间的 id 在三层里是同一套（STAIR-NW/NE/E/SE/SW），
+     所以「同一个 id 出现在两层」= 这两层被这部楼梯连着。
+     注意 5 层只有 NW / NE 两部楼梯，其余三部在 5 层不存在 —— 不能凭空给 5 层加楼梯。
+
+     规划分两步：
+       ① 在「楼层 × 楼梯」这张小图上跑 Dijkstra（同层边权 = A* 实际步行距离，
+          跨层边权 = 层数差 × 8 米，和 data/labs.js 里 links 的 8/16 米一致）；
+       ② 把选中的节点序列展开成每一层的折线（legs），逐层渲染。 */
+
+  var LEVEL = { 'B2-2': 2, 'B2-3': 3, 'B2-4': 4, 'B2-5': 5 };
+  var FLOOR_SHORT = { 'B2-5': '5F', 'B2-4': '4F', 'B2-3': '3F', 'B2-2': '2F' };
+
+  function roomsOf(fid) { return (FLOORS[fid] || {}).rooms || []; }
+
+  function findRoomIn(fid, id) {
+    var rs = roomsOf(fid);
+    for (var i = 0; i < rs.length; i++) if (rs[i].id === id) return rs[i];
+    return null;
+  }
+
+  function stairsOf(fid) {
+    var rs = roomsOf(fid), out = [];
+    for (var i = 0; i < rs.length; i++) if (rs[i].kind === 'stair') out.push(rs[i]);
+    return out;
+  }
+
+  /* 这部楼梯还出现在哪些层（用来判断它到底通不通其它层） */
+  function stairPartners(fid, stairId) {
+    var out = [];
+    for (var k in FLOORS) {
+      if (!FLOORS.hasOwnProperty(k) || k === fid) continue;
+      if (findRoomIn(k, stairId)) out.push(k);
+    }
+    return out;
+  }
+
+  function isCrossFloorStair(fid, stairId) { return stairPartners(fid, stairId).length > 0; }
+
+  /* 在指定层里算一条折线。snapFrom/snapTo 是就近吸附半径（栅格数）。 */
+  function pathInFloor(fid, fromPx, toPx, snapFrom, snapTo) {
+    if (!FLOORS[fid]) return null;
+    return withGrid(fid, function () {
+      var s = nearestFree(fromPx.x, fromPx.y, snapFrom === undefined ? 60 : snapFrom);
+      var t = nearestFree(toPx.x, toPx.y, snapTo === undefined ? 6 : snapTo);
+      if (!s || !t) return null;
+      var p = astar(s, t);
+      if (!p) return null;
+      var pts = [];
+      for (var i = 0; i < p.length; i++) pts.push(gridToPx(p[i][0], p[i][1]));
+      pts = simplify(pts);
+      var last = pts[pts.length - 1];
+      if (Math.hypot(last.x - toPx.x, last.y - toPx.y) > STEP * 1.5) pts.push({ x: toPx.x, y: toPx.y });
+      return pts;
+    });
+  }
+
+  function polyLen(pts) {
+    var L = 0;
+    for (var i = 0; pts && i < pts.length - 1; i++)
+      L += Math.hypot(pts[i+1].x - pts[i].x, pts[i+1].y - pts[i].y);
+    return L;
+  }
+
+  /* ★ 像素长度 → 米。每层各用自己的 pxPerMeter（现在三层都是 26，但别写死）。
+     之前直接拿 polyLen 当米用，导致「3F→2F 839 米」这种鬼数字 —— 那是像素。 */
+  function polyLenM(fid, pts) {
+    var ppm = (FLOORS[fid] && FLOORS[fid].pxPerMeter) || 26.0;
+    return polyLen(pts) / ppm;
+  }
+
+  /* 楼梯间"门口外的可走点"：在那一层自己的栅格里判定，绝不借用当前层的路网 */
+  function stairOutPoint(fid, stairRoom) {
+    return withGrid(fid, function () {
+      var cands = doorCandidates(stairRoom);
+      for (var i = 0; i < cands.length; i++) {
+        var t = nearestFree(cands[i].x, cands[i].y, 6);
+        if (t) return { x: cands[i].x, y: cands[i].y };
+      }
+      return null;
+    });
+  }
+
+  /* 某一层里，从 fromPx 走到某个房间门口（套间先走宿主，再进自己的门） */
+  function pathToRoomIn(fid, fromPx, room) {
+    var host = room.via ? findRoomIn(fid, room.via) : null;
+    var target = host || room;
+    var cands = withGrid(fid, function () { return doorCandidates(target); });
+    var best = null;
+    for (var c = 0; c < cands.length; c++) {
+      var pts = pathInFloor(fid, fromPx, cands[c], 60, 6);
+      if (!pts) continue;
+      if (!best || polyLen(pts) < polyLen(best)) best = pts;
+    }
+    if (!best) return null;
+    if (host) {
+      var own = facePoint(room, room.door || 'S',
+        (room.doorT === undefined || room.doorT === null) ? 0.5 : room.doorT);
+      best = best.concat([own]);
+    }
+    return best;
+  }
+
+  /* 跨楼层规划：从当前层的当前位置，到 destFid 上的 room。
+     返回 { legs:[{fid,kind,pts|stair}], meters, floors:[...], room } ，走不通返回 null。 */
+  function planCrossFloor(destFid, room) {
+    if (!FLOORS[destFid]) return null;
+
+    var startFid = CUR_FLOOR;
+    var startPx = { x: START_PX.x, y: START_PX.y };
+    /* ★ 起点名字必须在这里定死：切层之后 START_NAME 会变成目的地层的名字，
+       而跨层指引里"当前位置"说的永远是出发那一层。 */
+    var startName = START_NAME;
+
+    /* 节点：'@start' / '@dest' / 楼梯 id。key = fid + '|' + id */
+    var nodes = {};      // key -> { fid, id, kind:'start'|'dest'|'stair', px, room }
+    function addNode(fid, id, kind, px, r) {
+      nodes[fid + '|' + id] = { fid: fid, id: id, kind: kind, px: px, room: r || null, key: fid + '|' + id };
+    }
+    addNode(startFid, '@start', 'start', startPx);
+
+    /* 目标门口点：先找得到的那一面 */
+    var destCands = withGrid(destFid, function () {
+      var host = room.via ? findRoomIn(destFid, room.via) : null;
+      return doorCandidates(host || room);
+    });
+    var destPx = null;
+    for (var dc = 0; dc < destCands.length && !destPx; dc++) {
+      var cand = destCands[dc];
+      if (withGrid(destFid, function () {
+        var g = nearestFree(cand.x, cand.y, 6);
+        return !!g;
+      })) destPx = cand;
+    }
+    if (!destPx) return null;
+    addNode(destFid, '@dest', 'dest', destPx, room);
+
+    /* 楼梯节点：只收"确实通其它层"的 */
+    for (var fid in FLOORS) {
+      if (!FLOORS.hasOwnProperty(fid)) continue;
+      var ss = stairsOf(fid);
+      for (var si = 0; si < ss.length; si++) {
+        if (!isCrossFloorStair(fid, ss[si].id)) continue;
+        var op = stairOutPoint(fid, ss[si]);
+        if (op) addNode(fid, ss[si].id, 'stair', op, ss[si]);
+      }
+    }
+
+    /* 边权：同层走 A*，跨层按层数差 × 8 米 */
+    var costCache = {};
+    function edgeCost(a, b) {
+      if (a.fid === b.fid) {
+        var ck = a.key + '>' + b.key;
+        if (costCache[ck] !== undefined) return costCache[ck];
+        var pts = pathInFloor(a.fid, a.px, b.px, 60, 6);
+        /* ★ 同层边权也要换成米，否则和跨层的 8 米/层没法加在一起比较 */
+        var c = pts ? polyLenM(a.fid, pts) : null;
+        costCache[ck] = c;
+        return c;
+      }
+      /* 跨层：必须是同一部楼梯。
+         ★ 不再要求"中间层没插着" —— 2F→5F 在 3F 中转时，Dijkstra 会走
+           2F-NE → 3F-NE → 5F-NE 两跳，那是同一条梯段的自然延续（同一部楼梯，
+           只是中间楼层也标了这个房间）。要求"不许一步跨过"会让 2F→5F 直接不通。 */
+      if (a.kind !== 'stair' || b.kind !== 'stair' || a.id !== b.id) return null;
+      var la = LEVEL[a.fid], lb = LEVEL[b.fid];
+      if (la === undefined || lb === undefined) return null;
+      return Math.abs(lb - la) * 8.0;                    // 每层 8 米（与 labs.js 的 links 一致）
+    }
+
+    /* 小图 Dijkstra */
+    var dist = {}, prev = {}, done = {};
+    for (var nk in nodes) dist[nk] = Infinity;
+    var startKey = startFid + '|@start', destKey = destFid + '|@dest';
+    if (!nodes[startKey] || !nodes[destKey]) return null;
+    if (startKey === destKey) return null;
+    dist[startKey] = 0;
+
+    while (true) {
+      var cur = null, best = Infinity;
+      for (var k2 in nodes) {
+        if (done[k2]) continue;
+        if (dist[k2] < best) { best = dist[k2]; cur = k2; }
+      }
+      if (cur === null || cur === destKey) break;
+      done[cur] = 1;
+      for (var nk2 in nodes) {
+        if (done[nk2] || nk2 === cur) continue;
+        var w = edgeCost(nodes[cur], nodes[nk2]);
+        if (w === null) continue;
+        if (dist[cur] + w < dist[nk2]) { dist[nk2] = dist[cur] + w; prev[nk2] = cur; }
+      }
+    }
+    if (dist[destKey] === Infinity) return null;
+
+    /* 展开成节点序列 */
+    var seq = [], c2 = destKey;
+    while (c2 !== undefined) { seq.unshift(nodes[c2]); c2 = prev[c2]; }
+
+    /* 生成每一段的折线 */
+    var legs = [], floors = [seq[0].fid], meters = 0, i2;
+    for (i2 = 0; i2 < seq.length - 1; i2++) {
+      var a2 = seq[i2], b2 = seq[i2 + 1];
+      if (a2.fid === b2.fid) {
+        var pts2 = pathInFloor(a2.fid, a2.px, b2.px, 60, 6);
+        if (!pts2) return null;
+        var segM = polyLenM(a2.fid, pts2);
+        meters += segM;
+        legs.push({ fid: a2.fid, kind: 'walk', pts: pts2, to: b2, meters: segM });
+      } else {
+        var stepM = Math.abs(LEVEL[b2.fid] - LEVEL[a2.fid]) * 8.0;
+        meters += stepM;
+        legs.push({ fid: a2.fid, kind: 'stair', stair: a2.room, px: a2.px,
+                    toFid: b2.fid, enterPx: b2.px, meters: stepM,
+                    up: LEVEL[b2.fid] > LEVEL[a2.fid] });
+        floors.push(b2.fid);
+      }
+    }
+    /* 最后一段的落点补上（drawRoute 自己会补终点标记） */
+    return { legs: legs, meters: meters, floors: floors, room: room,
+             startFid: startFid, destFid: destFid, startName: startName, startPx: startPx };
+  }
+
+  /* 当前层要画哪几段 */
+  function legsOfFloor(plan, fid) {
+    var out = [];
+    for (var i = 0; i < plan.legs.length; i++)
+      if (plan.legs[i].fid === fid) out.push(plan.legs[i]);
+    return out;
+  }
+
+  function drawCrossRoute(plan) {
+    var legs = legsOfFloor(plan, CUR_FLOOR);
+    var pts = [];
+    for (var i = 0; i < legs.length; i++) {
+      if (legs[i].kind === 'walk') pts = pts.concat(legs[i].pts);
+    }
+    LAST_PTS = pts.length ? pts : null;
+    /* 起点绿点只在"出发层"画；终点红针只在"目的层"画 —— 不然 5F 的楼梯口会被标成你在这里 */
+    drawRoute(pts.length ? pts : null, {
+      start: CUR_FLOOR === plan.startFid,
+      end: CUR_FLOOR === plan.destFid
+    });
+
+    /* 本层若有"要上楼/下楼"的段落，在楼梯门口画一个醒目标记 */
+    for (var j = 0; j < legs.length; j++) {
+      var L = legs[j];
+      if (L.kind !== 'stair') continue;
+      var cx = mx(L.px.x), cz = mz(L.px.y);
+      var col = L.up ? 0x1a6cf5 : 0xf59e0b;
+      var g = new THREE.Group();
+      var shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.42, 2.6, 18),
+        new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.45,
+                                         transparent: true, opacity: 0.85 }));
+      shaft.position.set(cx, 1.4, cz);
+      g.add(shaft);
+      var cone = new THREE.Mesh(new THREE.ConeGeometry(0.85, 1.1, 20),
+        new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.55 }));
+      cone.position.set(cx, 2.9, cz);
+      if (!L.up) cone.rotation.z = Math.PI;
+      g.add(cone);
+      g.userData = { stair: L.stair ? L.stair.id : '', to: L.toFid };
+      routeGroup.add(g);
+    }
+  }
+
+  /* ---------------- 导航主流程 ----------------
+     ★ 2026-11-11 改成支持跨楼层：
+     目的地不在当前层时，先算一条跨层路线（planCrossFloor），再把当前层并把切到目的地所在层。
+     换层后由 renderPlan() 把「本层那几段」重新画出来，并把全程文字指引保持住。 */
+
+  var PLAN = null;        // 最近一次跨层规划结果（含三层的信息）
+
+  /* 返回值：true = 成功规划出路线；false = 走不通（调用方/自检靠它判断） */
+  function navigateTo(room, roomFid) {
+    var fid = roomFid || CUR_FLOOR;
+
+    /* 同层：走原来的路，行为完全不变 */
+    if (fid === CUR_FLOOR && !room.via) {
+      var pts0 = routeToDoor(room);
+      if (!pts0) { toast('没找到通路：' + room.name); return false; }
+      PLAN = null;
+      LAST_PTS = pts0;
+      drawRoute(pts0);
+      var m0 = [];
+      for (var j0 = 0; j0 < pts0.length; j0++) m0.push({ x: mx(pts0[j0].x), y: mz(pts0[j0].y) });
+      renderSteps(m0, room, START_NAME);
+      toast('已规划到「' + room.name + '」');
+      highlight(room.id);
+      return true;
+    }
+
+    /* 套间仍在同层，只是要经宿主 —— 沿用原逻辑 */
+    if (fid === CUR_FLOOR && room.via) {
+      return navigateSameFloorVia(room);
+    }
+
+    /* 跨楼层 */
+    var plan = null;
+    try {
+      plan = planCrossFloor(fid, room);
+    } catch (e) {
+      plan = null;
+    }
+    if (!plan) {
+      toast('没找到跨层通路：' + room.name + '（' + (FLOOR_SHORT[fid] || fid) + '）');
+      return false;
+    }
+
+    PLAN = plan;
+    var destFid = fid;
+    if (destFid !== CUR_FLOOR) {
+      /* 先切到目的地层，再画（切层会清掉路线） */
+      switchFloor(destFid, true);
+    }
+    renderPlan();
+    toast('已规划跨层路线 → ' + (FLOOR_SHORT[destFid] || destFid) + '「' + room.name + '」　约 ' +
+          Math.round(plan.meters) + ' 米');
+    highlight(room.id);
+    return true;
+  }
+
+  /* 同层套间（334/335 via 333）：原逻辑保留 */
+  function navigateSameFloorVia(room) {
+    var host = findRoom(room.via);
+    var hp = host ? routeToDoor(host) : null;
+    if (!hp) {
+      toast('没找到通路：' + room.name + '（要先进「' + (host ? host.name : room.via) + '」）');
+      return false;
+    }
+    var own = facePoint(room, room.door || 'S',
+      (room.doorT === undefined || room.doorT === null) ? 0.5 : room.doorT);
+    var pts = hp.concat([own]);
+    PLAN = null;
+    LAST_PTS = pts;
+    drawRoute(pts);
+    var m = [];
+    for (var j = 0; j < pts.length; j++) m.push({ x: mx(pts[j].x), y: mz(pts[j].y) });
+    renderSteps(m, room, START_NAME);
+    toast('已规划到「' + room.name + '」　经「' + host.name + '」进入');
+    highlight(room.id);
+    return true;
+  }
+
+  /* 把 PLAN 里属于当前层的那几段画出来，并把全程指引写进右栏 */
+  function renderPlan() {
+    if (!PLAN) return;
+    drawCrossRoute(PLAN);
+    renderStepsCross(PLAN);
+  }
+
+  /* 跨层文字指引：本层那几段给详细转向，其余楼层折叠成「上/下楼梯到 X 层，再走 N 米」 */
+  function renderStepsCross(plan) {
+    var el = document.getElementById('steps');
+    var room = plan.room;
+    document.getElementById('destName').textContent =
+      room.name + '（' + room.id + '）' + (plan.destFid !== plan.startFid
+        ? '　·　' + (FLOOR_SHORT[plan.destFid] || '') + ' 跨层' : '');
+
+    var html = '<div class="st start"><div class="ic">●</div><div class="tx"><em>当前位置</em>　' +
+               (plan.startName || START_NAME) + '</div></div>';
+    html += '<div class="st"><div class="ic">◷</div><div class="tx">全程约 <em>' +
+            Math.round(plan.meters) + '</em> 米 · 步行约 ' +
+            Math.max(1, Math.round(plan.meters/1.15/60)) + ' 分钟（含走楼梯）</div></div>';
+
+    var mPts = [];
+    for (var i = 0; i < plan.legs.length; i++) {
+      var L = plan.legs[i];
+      if (L.kind === 'stair') {
+        /* 同一部楼梯连着跨两层（2F→3F→5F 走同一部 NE 梯）要并成一句，
+           否则会出现「上到 3F…再上到 5F」这种把中间楼当成目的地的怪提示。 */
+        var stairId = L.stair ? L.stair.id : '';
+        var merged = Math.round(L.meters), endFid = L.toFid, sameUp = L.up;
+        var j2 = i + 1;
+        while (j2 < plan.legs.length && plan.legs[j2].kind === 'stair' &&
+               (plan.legs[j2].stair ? plan.legs[j2].stair.id : '') === stairId &&
+               plan.legs[j2].up === sameUp) {
+          merged += Math.round(plan.legs[j2].meters);
+          endFid = plan.legs[j2].toFid;
+          j2++;
+        }
+        i = j2 - 1;                      // 跳过后面的同梯跳
+        var toName = FLOOR_SHORT[endFid] || endFid;
+        var stairName = L.stair ? L.stair.name : '楼梯间';
+        html += '<div class="st stair"><div class="ic">' + (sameUp ? '▲' : '▼') + '</div>' +
+                '<div class="tx"><em>' + (sameUp ? '上楼梯' : '下楼梯') + '</em>　走「' + stairName +
+                '」到 <em>' + toName + '</em>　约 ' + merged + ' 米</div></div>';
+        continue;
+      }
+      if (L.fid !== CUR_FLOOR) {
+        html += '<div class="st dim"><div class="ic">·</div><div class="tx">' +
+                (FLOOR_SHORT[L.fid] || L.fid) + ' 层内步行 <em>' +
+                Math.round(L.meters) + '</em> 米</div></div>';
+        continue;
+      }
+      /* 本层的这一段：逐段给转向 */
+      var pts = L.pts;
+      var mm = [];
+      for (var j = 0; j < pts.length; j++) mm.push({ x: mx(pts[j].x), y: mz(pts[j].y) });
+      for (var k = 0; k < mm.length - 1; k++) {
+        var len = Math.hypot(mm[k+1].x-mm[k].x, mm[k+1].y-mm[k].y);
+        if (len < 0.9) continue;
+        if (k > 0) {
+          var a1 = Math.atan2(mm[k].y-mm[k-1].y, mm[k].x-mm[k-1].x);
+          var a2 = Math.atan2(mm[k+1].y-mm[k].y, mm[k+1].x-mm[k].x);
+          var d = a2 - a1;
+          while (d > Math.PI) d -= Math.PI*2;
+          while (d < -Math.PI) d += Math.PI*2;
+          var word = Math.abs(d) < 0.35 ? '继续直行' : (d > 0 ? '右转' : '左转');
+          var icon = Math.abs(d) < 0.35 ? '↑' : (d > 0 ? '↱' : '↰');
+          html += '<div class="st"><div class="ic">' + icon + '</div><div class="tx"><em>' +
+                  word + '</em></div></div>';
+        }
+        html += '<div class="st"><div class="ic">↑</div><div class="tx">直行 <em>' +
+                Math.round(len) + '</em> 米</div></div>';
+      }
+    }
+    html += '<div class="st end"><div class="ic">◆</div><div class="tx">到达 <em>' +
+            room.name + '</em></div></div>';
+    el.innerHTML = html;
+  }
+
+  function toast(t) {
+    var el = document.getElementById('tip');
+    el.textContent = t;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.remove('show'); }, 1800);
+  }
+
+  /* ---------------- 交互 ---------------- */
+  var raycaster = new THREE.Raycaster();
+  var pointer = new THREE.Vector2();
+  var dragging = false, moved = false, lastX = 0, lastY = 0;
+
+  function setPointer(ev) {
+    var r = canvas.getBoundingClientRect();
+    pointer.x = ((ev.clientX-r.left)/r.width)*2 - 1;
+    pointer.y = -((ev.clientY-r.top)/r.height)*2 + 1;
+  }
+  canvas.addEventListener('pointerdown', function (ev) {
+    dragging = true; moved = false;
+    lastX = ev.clientX; lastY = ev.clientY;
+    canvas.setPointerCapture(ev.pointerId);
+  });
+  canvas.addEventListener('pointermove', function (ev) {
+    if (!dragging) return;
+    var dx = ev.clientX-lastX, dy = ev.clientY-lastY;
+    if (Math.abs(dx)+Math.abs(dy) > 3) moved = true;
+    lastX = ev.clientX; lastY = ev.clientY;
+    cam.azim -= dx*0.006;
+    cam.polar = Math.max(0.25, Math.min(1.35, cam.polar - dy*0.004));
+    updateCamera();
+  });
+  canvas.addEventListener('pointerup', function (ev) {
+    dragging = false;
+    if (moved) return;
+    setPointer(ev);
+    raycaster.setFromCamera(pointer, camera);
+    var hit = raycaster.intersectObjects(floorMeshes, false);
+    if (!hit.length) return;
+    var rid = hit[0].object.userData.rid;
+    for (var i = 0; i < D.rooms.length; i++)
+      if (D.rooms[i].id === rid) { navigateTo(D.rooms[i], CUR_FLOOR); break; }
+  });
+  canvas.addEventListener('wheel', function (ev) {
+    ev.preventDefault();
+    cam.zoom = Math.max(0.4, Math.min(4, cam.zoom * (ev.deltaY > 0 ? 0.92 : 1.087)));
+    updateCamera();
+  }, { passive:false });
+
+  /* ---------------- 左侧列表 ----------------
+     ★ 2026-11-11 改成「跨楼层列表」：
+     左边列的不再只是当前层的房间，而是三层全都在，每行前面标出楼层（2F/3F/5F）。
+     点别层的房间 = 直接规划跨层路线（会自动切层显示）。
+     当前层的房间排在前面、用实心点；别层的排在后面、用空心点，一眼能分清。 */
+  var listAllFloors = true;
+
+  function buildList() {
+    var box = document.getElementById('roomList');
+    box.innerHTML = '';                 // 换层时先清空，否则新旧两层的房间会叠在一起
+    var frag = document.createDocumentFragment();
+
+    var order = [], i;
+    for (i = 0; i < FLOOR_ORDER.length; i++) order.push(FLOOR_ORDER[i]);
+    if (order.indexOf(CUR_FLOOR) > 0) {           // 当前层提到最前面
+      order.splice(order.indexOf(CUR_FLOOR), 1);
+      order.unshift(CUR_FLOOR);
+    }
+
+    for (var oi = 0; oi < order.length; oi++) {
+      var fid = order[oi];
+      if (!FLOORS[fid]) continue;
+      var rs = roomsOf(fid);
+      if (!listAllFloors && fid !== CUR_FLOOR) continue;
+
+      if (listAllFloors) {                        // 楼层分隔条
+        var h = document.createElement('div');
+        h.className = 'rg' + (fid === CUR_FLOOR ? ' on' : '');
+        h.textContent = (FLOOR_SHORT[fid] || fid) + '　' +
+                        (fid === CUR_FLOOR ? (FLOORS[fid].name || '') + '（当前）' : (FLOORS[fid].name || ''));
+        frag.appendChild(h);
+      }
+
+      for (i = 0; i < rs.length; i++) {
+        (function (r, fid2) {
+          var k = KIND[r.kind] || KIND.room;
+          var d = document.createElement('div');
+          d.className = 'ri' + (fid2 === CUR_FLOOR ? '' : ' other');
+          d.dataset.rid = r.id;
+          d.dataset.fid = fid2;
+          var dot = document.createElement('i');
+          dot.style.background = k.dot;
+          var sp = document.createElement('span');
+          sp.textContent = (fid2 === CUR_FLOOR ? '' : (FLOOR_SHORT[fid2] || '') + ' ') + r.id + '　' + r.name;
+          d.appendChild(dot); d.appendChild(sp);
+          d.onclick = function () { navigateTo(r, fid2); };
+          frag.appendChild(d);
+        })(rs[i], fid);
+      }
+    }
+    box.appendChild(frag);
+  }
+
+  /* 楼层列表：2F / 3F / 5F 三层都已接入，点一下就换层（样式与原来一致） */
+  function buildFloors() {
+    var box = document.getElementById('floors');
+    if (!box) return;
+    var html = '';
+    for (var i = 0; i < FLOOR_ORDER.length; i++) {
+      var id = FLOOR_ORDER[i];
+      if (!FLOORS[id]) continue;
+      var f = FLOORS[id];
+      html += '<div class="fl' + (id === CUR_FLOOR ? ' on' : '') + '" data-fid="' + id + '"' +
+              (f.theme ? ' title="' + f.theme + '"' : '') + '>' +
+              '<b>' + FLOOR_LABEL[id] + '</b>实验·教学</div>';
+    }
+    box.innerHTML = html;
+    var items = box.querySelectorAll('.fl');
+    for (var j = 0; j < items.length; j++) {
+      items[j].onclick = function () { switchFloor(this.dataset.fid); };
+    }
+  }
+
+  function highlight(rid) {
+    var items = document.querySelectorAll('.ri');
+    for (var i = 0; i < items.length; i++)
+      items[i].classList.toggle('on', items[i].dataset.rid === rid);
+  }
+
+  document.getElementById('search').addEventListener('input', function (e) {
+    var q = e.target.value.trim().toLowerCase();
+    var items = document.querySelectorAll('.ri');
+    for (var i = 0; i < items.length; i++) {
+      var txt = items[i].textContent.toLowerCase();
+      items[i].style.display = (!q || txt.indexOf(q) >= 0) ? '' : 'none';
+    }
+    /* 搜索现在跨楼层：某层的房间全被过滤掉了，就把那层的分隔条也一起藏起来 */
+    var rows = document.getElementById('roomList').children;
+    var curHead = null, headHasHit = false;
+    for (var j = 0; j < rows.length; j++) {
+      var el = rows[j];
+      if (el.className.indexOf('rg') === 0) {
+        if (curHead) curHead.style.display = headHasHit ? '' : 'none';
+        curHead = el; headHasHit = false;
+      } else if (el.style.display !== 'none') {
+        headHasHit = true;
+      }
+    }
+    if (curHead) curHead.style.display = headHasHit ? '' : 'none';
+  });
+
+  /* ---------------- 启动 ---------------- */
+  /* URL 参数（方便截图核对 / 分享指定视角）：
+       ?azim=45&polar=48&zoom=1.6&focus=311&noauto=1
+     azim/polar 单位是度；focus 传房间或支廊 id；noauto=1 表示不自动规划默认路线。 */
+  (function readQuery() {
+    var q = location.search.replace(/^\?/, '').split('&'), m = {};
+    for (var i = 0; i < q.length; i++) {
+      var kv = q[i].split('=');
+      if (kv[0]) m[kv[0]] = decodeURIComponent(kv[1] || '');
+    }
+    if (m.azim) cam.azim = parseFloat(m.azim) * Math.PI / 180;
+    if (m.polar) cam.polar = parseFloat(m.polar) * Math.PI / 180;
+    if (m.zoom) cam.zoom = parseFloat(m.zoom);
+    window.__QUERY__ = m;
+  })();
+
+  /* ---------------- 换层 ----------------
+     三层共用一套坐标系和一套建模代码，换层 = 清空场景 → 换全局参数 → 重新铺路网 → 重建模型。
+     页头/左右面板的 DOM 结构和样式完全不动，只是列表内容按新楼层重填。 */
+  function clearModel() {
+    for (var i = root.children.length - 1; i >= 0; i--) {
+      var c = root.children[i];
+      if (c === routeGroup) continue;
+      root.remove(c);
+      (function (o) {
+        o.traverse(function (n) { if (n.geometry) n.geometry.dispose(); });
+      })(c);
+    }
+    while (routeGroup.children.length) {
+      var r = routeGroup.children.pop();
+      if (r.geometry) r.geometry.dispose();
+    }
+    floorMeshes.length = 0;
+    LAST_PTS = null;
+  }
+
+  function updateFoot() {
+    document.getElementById('foot').textContent =
+      D.building + ' ' + D.name + '　共 ' + D.rooms.length + ' 个房间　比例 ' +
+      Math.round(S) + ' px = 1 m';
+  }
+
+  /* silent=true：跨层导航内部切层用，不清路线、不弹 toast、不打断 PLAN。
+     ★ 手动换层（点楼层栏）时如果正有一条跨层规划，也要留着它 ——
+       用户是在沿着跨层路线走，切层只是看不同楼层，不该把路线弄丢。 */
+  function switchFloor(id, silent) {
+    if (!FLOORS[id] || id === CUR_FLOOR) return;
+    CUR_FLOOR = id;
+    clearModel();
+    applyFloorGlobals(id);
+    setVoid();
+    useGridOf(id);           // 栅格每层一份，换层只是换别名，不再重建
+    setStart();
+    buildFloor();
+    buildFloors();
+    buildList();
+    updateFoot();
+    document.getElementById('search').value = '';      // 换层后清掉搜索词
+    document.querySelectorAll('.ri').forEach(function (e) { e.classList.remove('on'); });
+    computeFit();
+    applyView();
+    if (PLAN) {                      // 跨层路线：把本层那几段重新画出来
+      renderPlan();
+      highlight(PLAN.room.id);
+    } else if (!silent) {
+      document.getElementById('destName').textContent = '—';
+      document.getElementById('steps').innerHTML = '';
+    }
+    if (!silent && !PLAN) toast('已切换到 ' + FLOOR_LABEL[id]);
+  }
+  window.__switchFloor = switchFloor;
+
+  /* ---- 启动：先把 3 层装上（和以前完全一样），再补网格/起始点 ---- */
+  setVoid();
+  useGridOf(CUR_FLOOR);
+  setStart();
+  buildFloor();
+  buildFloors();
+  buildList();
+  updateCamera();          // 先把相机摆到等轴测角度，并按模型算好取景范围
+  resize();
+  // 预览面板 / iframe 里，容器一开始可能还算不出尺寸，隔一帧和稍后再补两次
+  requestAnimationFrame(function () { resize(); });
+  setTimeout(function () { resize(); }, 150);
+
+  updateFoot();
+
+  /* ?floor=B2-2 / B2-5：直接进某一层（截图和分享用） */
+  (function applyQueryFloor() {
+    var m = window.__QUERY__ || {};
+    if (m.floor && FLOORS[m.floor]) switchFloor(m.floor);
+  })();
+
+  (function applyQueryFocus() {
+    var m = window.__QUERY__ || {};
+    if (m.focus) {
+      var ok = false;
+      for (var i = 0; i < D.rooms.length; i++)
+        if (D.rooms[i].id === m.focus) { focusOn(D.rooms[i], m.margin ? parseFloat(m.margin) : 3.0); ok = true; break; }
+      if (!ok && D.corridors)
+        for (var j = 0; j < D.corridors.length; j++)
+          if (D.corridors[j].id === m.focus) { focusOn(D.corridors[j], m.margin ? parseFloat(m.margin) : 3.0); ok = true; break; }
+      if (ok) camera.zoom = cam.zoom, camera.updateProjectionMatrix();
+    }
+    if (m.noauto) return;
+    setTimeout(function () {
+      for (var k = 0; k < D.rooms.length; k++)
+        if (D.rooms[k].id === '318') { navigateTo(D.rooms[k]); break; }
+    }, 80);
+  })();
+
+  /* ?selftest=1：从大厅起点把每个房间都试走一遍，结果写进 #selftest。
+     用于无头浏览器 --dump-dom 抓取，靠它验证"改完门和走廊，路网还通不通"。
+
+     ★ 2026-11-11 重写：以前第二轮是假的（只抄宿主的 ok），根本没验"能不能直接进去"。
+       现在套间要同时满足三条才算通：
+         ① 宿主的门确实走得到；
+         ② 自己的门确实开在"与宿主共用的那道墙"上、并且落在宿主的跨度内；
+         ③ 自己那道门不许直接连通公共走廊（否则就是绕墙穿进去）。 */
+  (function selfTest() {
+    if (!(window.__QUERY__ || {}).selftest) return;
+    setTimeout(function () {
+      var from = nearestFree(START_PX.x, START_PX.y, 60);
+      var res = {}, bad = [];
+
+      // 第一轮：门直接开向公共走廊的房间
+      for (var i = 0; i < D.rooms.length; i++) {
+        var r = D.rooms[i];
+        if (r.via) continue;
+        var cands = doorCandidates(r), ok = false, dp = '';
+        for (var c = 0; c < cands.length && !ok; c++) {
+          var t = nearestFree(cands[c].x, cands[c].y, 6);
+          if (!t) continue;
+          if (astar(from, t)) { ok = true; dp = cands[c].k; }
+        }
+        res[r.id] = { ok: ok, k: dp, r: r };
+        if (!ok) bad.push(r.id);
+      }
+
+      // 第二轮：套间（门开在宿主房间内部，只能经由宿主进入，例如 334/335 走 333）
+      for (var j = 0; j < D.rooms.length; j++) {
+        var r2 = D.rooms[j];
+        if (!r2.via) continue;
+        var host = findRoom(r2.via), hv = res[r2.via], why = [];
+
+        if (!hv || !hv.ok) why.push('宿主不可达');
+
+        if (host) {
+          var k = r2.door, cx2 = (r2.x1 + r2.x2) / 2;
+          var dx = (r2.doorT === undefined || r2.doorT === null) ? 0.5 : r2.doorT;
+          if (k === 'N' || k === 'S') cx2 = r2.x1 + (r2.x2 - r2.x1) * dx;
+          var sharesWall = (k === 'S' && Math.abs(r2.y2 - host.y1) <= 4) ||
+                           (k === 'N' && Math.abs(r2.y1 - host.y2) <= 4);
+          if (!sharesWall) why.push('门没开在与宿主共用的那道墙上');
+          else if (k === 'S' && (cx2 < host.x1 - 2 || cx2 > host.x2 + 2)) why.push('门洞落在宿主跨度外');
+          else if (k === 'N' && (cx2 < host.x1 - 2 || cx2 > host.x2 + 2)) why.push('门洞落在宿主跨度外');
+        }
+
+        // ③ 不许有"自己能直接通到公共走廊"的门
+        var os2 = openingsOf(r2);
+        for (var q = 0; q < os2.length; q++) {
+          var p2 = facePoint(r2, os2[q].k, os2[q].t);
+          var g2 = pxToGrid(p2.x, p2.y);
+          if (isFree(g2[0], g2[1]) && astar(from, g2)) {
+            why.push(os2[q].k + ' 面能直接走进去（穿墙）');
+          }
+        }
+
+        res[r2.id] = { ok: !why.length, k: r2.door, via: r2.via, why: why.join('/'), r: r2 };
+        if (why.length) bad.push(r2.id);
+      }
+
+      var out = [];
+      for (var k2 = 0; k2 < D.rooms.length; k2++) {
+        var rid = D.rooms[k2].id, v = res[rid] || { ok: false, k: '' };
+        out.push(rid + ':' + (v.ok ? 'OK/' + v.k + (v.via ? '(via ' + v.via + ')' : '') : 'FAIL'));
+      }
+      var d = document.createElement('div');
+      d.id = 'selftest';
+      d.textContent = out.join(' ');
+      d.setAttribute('data-bad', bad.join(','));
+      document.body.appendChild(d);
+    }, 150);
+  })();
+
+  /* ?probe=<房间ID>：把该房间的寻路结果写成 JSON 放进 #probe，供无头浏览器抓取。
+     用它验证"334/335 只能经 333"这种关系：route 的倒数第二个点应该落在 333 的门口。 */
+  (function probe() {
+    var q = window.__QUERY__ || {};
+    if (!q.probe) return;
+    setTimeout(function () {
+      var room = findRoom(q.probe);
+      if (!room) return;
+      var from = nearestFree(START_PX.x, START_PX.y, 60);
+      var direct = {};
+      var os = openingsOf(room);
+      for (var i = 0; i < os.length; i++) {
+        var p = facePoint(room, os[i].k, os[i].t);
+        var g = pxToGrid(p.x, p.y);
+        direct[os[i].k] = {
+          pt: [Math.round(p.x), Math.round(p.y)],
+          free: isFree(g[0], g[1]),
+          reach: (isFree(g[0], g[1]) && from) ? !!astar(from, g) : false
+        };
+      }
+      navigateTo(room);
+      var out = { id: room.id, door: room.door, via: room.via || null, direct: direct,
+                  route: LAST_PTS };
+      var d = document.createElement('div');
+      d.id = 'probe';
+      d.textContent = JSON.stringify(out);
+      document.body.appendChild(d);
+    }, 400);
+  })();
+
+  var _cw = 0, _ch = 0;
+  (function loop() {
+    requestAnimationFrame(loop);
+    // 每帧盯一次画布尺寸。容器变宽变窄不一定触发 window.resize（拖侧栏、切预览面板都会漏）
+    if (stage.clientWidth !== _cw || stage.clientHeight !== _ch) {
+      _cw = stage.clientWidth; _ch = stage.clientHeight;
+      resize();
+    }
+    renderer.render(scene, camera);
+  })();
+
+  window.__NAV__ = {
+    scene:scene, camera:camera,
+    /* ★ data 是"当前层"的数据（换层后会变），别当成固定 3 层快照用。
+       以前写成 data:D 是在闭包里取了当时那个对象，换层后还是旧的那份 —— 自检会误判。 */
+    get data() { return D; },
+    navigate:function (id, fid) {
+      fid = fid || CUR_FLOOR;
+      var r = findRoomIn(fid, id);
+      if (r) { navigateTo(r, fid); return true; }
+      /* 没给楼层：先在本层找，找不到再扫其它层 */
+      for (var i = 0; i < D.rooms.length; i++) if (D.rooms[i].id === id) { navigateTo(D.rooms[i], CUR_FLOOR); return true; }
+      for (var k in FLOORS) {
+        if (!FLOORS.hasOwnProperty(k) || k === CUR_FLOOR) continue;
+        var r2 = findRoomIn(k, id);
+        if (r2) { navigateTo(r2, k); return true; }
+      }
+      return false;
+    },
+    setCam:function (azim, polar, zoom) {
+      cam.azim = azim; cam.polar = polar;
+      if (zoom) cam.zoom = zoom;
+      updateCamera();
+    },
+    doorPoint: doorPoint,
+    doorCandidates: doorCandidates,
+    focus: function (id, mg) {
+      if (id === null) { resetFocus(); return; }
+      for (var i = 0; i < D.rooms.length; i++) if (D.rooms[i].id === id) { focusOn(D.rooms[i], mg); return; }
+      if (D.spurs) for (var j = 0; j < D.spurs.length; j++) if (D.spurs[j].id === id) { focusOn(D.spurs[j], mg); return; }
+    },
+    lastRoute: function () { return LAST_PTS; },
+    isFreePx: function (x, y) { var g = pxToGrid(x,y); return isFree(g[0], g[1]); },
+
+    /* ---- 跨楼层相关（自检/验收用） ---- */
+    floor: function () { return CUR_FLOOR; },
+    floors: function () { return FLOOR_ORDER.slice(); },
+    plan: function (fid, id) {
+      var room = findRoomIn(fid, id);
+      if (!room) return null;
+      return planCrossFloor(fid, room);
+    },
+    planNow: function () { return PLAN; },
+    /* 只算、不切层、不画：返回 {meters, floors, legs:楼层序列} 供无头验收断言 */
+    planSummary: function (destFid, roomId) {
+      var room = findRoomIn(destFid, roomId);
+      if (!room) return null;
+      var p = planCrossFloor(destFid, room);
+      if (!p) return null;
+      var hops = [];
+      for (var i = 0; i < p.legs.length; i++) {
+        var L = p.legs[i];
+        if (L.kind === 'stair') hops.push({ stair: L.stair ? L.stair.id : '',
+                                            from: L.fid, to: L.toFid, up: L.up, meters: L.meters });
+      }
+      return { start: p.startFid, dest: p.destFid, meters: p.meters,
+               floors: p.floors, hops: hops, legs: p.legs.length };
+    },
+    switchFloor: switchFloor
+  };
+
+})();
+</script>
+</body>
+</html>

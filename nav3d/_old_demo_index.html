@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>室内导航 3D · 等轴测原型</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  background:#e9edf3;color:#1a2233}
+#app{display:flex;height:100vh}
+
+/* ---------- 左侧：楼层 ---------- */
+#left{width:182px;flex:0 0 182px;background:#fff;border-right:1px solid #e3e7ee;
+  display:flex;flex-direction:column;padding:14px 0}
+#left h2{font-size:12px;font-weight:600;letter-spacing:.12em;color:#8a94a6;
+  margin:0 0 10px;padding:0 16px}
+.fl{display:flex;align-items:center;gap:10px;padding:11px 16px;font-size:14px;color:#5a6478;cursor:pointer}
+.fl b{width:30px;font-size:13px;color:#9aa4b5;font-weight:600}
+.fl.on{background:#eef4ff;color:#1a6cf5;font-weight:600;border-left:3px solid #1a6cf5;padding-left:13px}
+.fl.on b{color:#1a6cf5}
+.fl.dim{opacity:.42;cursor:not-allowed}
+
+/* ---------- 中间：3D 舞台 ---------- */
+#stage{flex:1;position:relative;background:radial-gradient(circle at 50% 42%,#fbfcfe 0%,#dfe5ef 100%)}
+#cv{display:block;width:100%;height:100%}
+#hint{position:absolute;left:16px;bottom:14px;font-size:12px;color:#6b7687;
+  background:rgba(255,255,255,.85);padding:6px 12px;border-radius:20px;
+  border:1px solid #dde3ed;pointer-events:none}
+#tip{position:absolute;left:50%;top:16px;transform:translateX(-50%);
+  background:#1a2233;color:#fff;font-size:12.5px;padding:8px 18px;border-radius:20px;
+  opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+#tip.show{opacity:.92}
+
+/* ---------- 右侧：路线指引 ---------- */
+#right{width:250px;flex:0 0 250px;background:#fff;border-left:1px solid #e3e7ee;
+  display:flex;flex-direction:column}
+#right .hd{padding:15px 18px 12px;border-bottom:1px solid #eef1f6}
+#right .hd span{font-size:11px;letter-spacing:.14em;color:#8a94a6;font-weight:600}
+#right .hd p{margin:7px 0 0;font-size:15px;font-weight:600;color:#1a2233}
+#steps{flex:1;overflow-y:auto;padding:6px 0}
+.st{display:flex;gap:11px;padding:10px 18px}
+.st .ic{width:22px;height:22px;flex:0 0 22px;border-radius:50%;background:#eef4ff;
+  display:flex;align-items:center;justify-content:center;font-size:12px;color:#1a6cf5}
+.st .tx{font-size:13.5px;color:#3a4459;line-height:1.45}
+.st .tx em{font-style:normal;font-weight:600;color:#1a2233}
+.st.end .ic{background:#ffecec;color:#e5342a}
+.st.start .ic{background:#e6f9ef;color:#0f9d58}
+#foot{padding:12px 18px;border-top:1px solid #eef1f6;font-size:12px;color:#8a94a6;line-height:1.6}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <aside id="left">
+    <h2>楼层选择 FLOOR</h2>
+    <div class="fl dim"><b>5F</b>餐饮·影院</div>
+    <div class="fl dim"><b>4F</b>亲子·培训</div>
+    <div class="fl on"><b>3F</b>服饰·零售</div>
+    <div class="fl dim"><b>2F</b>女装·配饰</div>
+    <div class="fl dim"><b>1F</b>精品·服务</div>
+    <div class="fl dim"><b>B1</b>超市·停车</div>
+  </aside>
+
+  <main id="stage">
+    <canvas id="cv"></canvas>
+    <div id="hint">拖拽旋转 · 滚轮缩放 · 点击店铺导航</div>
+    <div id="tip"></div>
+  </main>
+
+  <aside id="right">
+    <div class="hd">
+      <span>路线指引 ROUTE</span>
+      <p id="destName">美妆生活 B203</p>
+    </div>
+    <div id="steps"></div>
+    <div id="foot">起点：你现在的位置（3F 主走廊西端）</div>
+  </aside>
+
+</div>
+
+<script src="../js/vendor/three.min.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     1. 数据层：一层楼的平面图数据
+        —— 换真实图纸时，只改这一段
+     ========================================================= */
+
+  var H    = 3.0;    // 墙高（米）
+  var T    = 0.30;   // 墙厚（米）
+  var CORR = 2.8;    // 主走廊半宽（米）
+  var LANE = { x1: 8, x2: 13 };     // 纵向通道
+  var OUT  = { x1: -20, x2: 20, z1: -13, z2: 13 };
+
+  var SHOPS = [
+    { id:'A101', name:'服饰精品 A101', x1:-20, x2:-10, z1:-13,   z2:-CORR, color:0xd8e6fb },
+    { id:'A102', name:'鞋履集合 A102', x1:-10, x2:-1,  z1:-13,   z2:-CORR, color:0xf9d9c8 },
+    { id:'A103', name:'箱包皮具 A103', x1:-1,  x2:8,   z1:-13,   z2:-CORR, color:0xc9ecd8 },
+    { id:'A105', name:'数码体验 A105', x1:13,  x2:20,  z1:-13,   z2:-CORR, color:0xf8e9b4 },
+
+    { id:'B201', name:'轻食餐饮 B201', x1:-20, x2:-11, z1:CORR,   z2:13,    color:0xf9d9c8 },
+    { id:'B202', name:'珠宝钟表 B202', x1:-11, x2:-2,  z1:CORR,   z2:13,    color:0xd8e6fb },
+    { id:'B203', name:'美妆生活 B203', x1:-2,  x2:7,   z1:CORR,   z2:13,    color:0xc9ecd8 },
+    { id:'B205', name:'书店咖啡 B205', x1:13,  x2:20,  z1:CORR,   z2:13,    color:0xf8e9b4 }
+  ];
+
+  var START = { x: -17, z: 0 };   // 起点：主走廊西端
+
+  function shopCenter(s) { return { x:(s.x1+s.x2)/2, z:(s.z1+s.z2)/2 }; }
+  function shopDoor(s)   { var c = shopCenter(s); return { x:c.x, z:(s.z2 < 0 ? s.z2 : s.z1) }; }
+  function shopIsNorth(s){ return s.z2 < 0; }
+
+  /* =========================================================
+     2. 渲染骨架
+     ========================================================= */
+
+  var canvas   = document.getElementById('cv');
+  var stage    = document.getElementById('stage');
+  var renderer = new THREE.WebGLRenderer({ canvas:canvas, antialias:true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xf2f5fa);
+
+  /* 等轴测正交相机：正交投影（无近大远小）+ 俯角 35.26° */
+  var NEED_W = 50, NEED_H = 31;      // 场景需要的最小视野（水平/垂直，米）
+  var camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 800);
+  var cam = { azim: Math.PI * 0.25, polar: Math.atan(Math.SQRT2), dist: 300, zoom: 1 };
+
+  function updateCamera() {
+    var sp = Math.sin(cam.polar), cp = Math.cos(cam.polar);
+    camera.position.set(cam.dist*sp*Math.sin(cam.azim), cam.dist*cp, cam.dist*sp*Math.cos(cam.azim));
+    camera.lookAt(0, 0, 0);
+    camera.zoom = cam.zoom;
+    camera.updateProjectionMatrix();
+  }
+
+  function resize() {
+    var w = stage.clientWidth, h = stage.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    var a = w / h;
+    var vs = Math.max(NEED_H, NEED_W / a);   // 保证整层都装得下
+    camera.left = -vs*a/2; camera.right = vs*a/2;
+    camera.top  =  vs/2;   camera.bottom = -vs/2;
+    updateCamera();
+  }
+  window.addEventListener('resize', resize);
+
+  /* 光照：环境压低、主光适中 —— 保证白墙有明暗面，浅色地面不被冲白 */
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xb9c4d6, 0.38));
+
+  var sun = new THREE.DirectionalLight(0xffffff, 0.82);
+  sun.position.set(34, 58, 26);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.left = -40; sun.shadow.camera.right = 40;
+  sun.shadow.camera.top  =  40; sun.shadow.camera.bottom = -40;
+  sun.shadow.camera.near = 1;   sun.shadow.camera.far = 220;
+  sun.shadow.bias = -0.0006;
+  sun.shadow.radius = 2.5;
+  scene.add(sun);
+
+  var fill = new THREE.DirectionalLight(0xd6e2ff, 0.22);
+  fill.position.set(-30, 24, -26);
+  scene.add(fill);
+
+  /* =========================================================
+     3. 建模工具
+     ========================================================= */
+
+  var matCache = {};
+  function mat(color, rough) {
+    var k = color + '_' + (rough === undefined ? 0.9 : rough);
+    if (!matCache[k]) matCache[k] = new THREE.MeshStandardMaterial({
+      color:color, roughness:(rough === undefined ? 0.9 : rough), metalness:0
+    });
+    return matCache[k];
+  }
+
+  function box(w, h, d, x, y, z, m) {
+    var mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  function wall(x1, z1, x2, z2, h, t, color) {
+    var dx = x2-x1, dz = z2-z1;
+    var len = Math.sqrt(dx*dx + dz*dz);
+    if (len < 0.02) return null;
+    var mesh = box(len, h, t, (x1+x2)/2, h/2, (z1+z2)/2, mat(color === undefined ? 0xfbfcfe : color));
+    mesh.rotation.y = -Math.atan2(dz, dx);
+    return mesh;
+  }
+
+  function slab(x1, z1, x2, z2, color, y, thick) {
+    var w = Math.abs(x2-x1), d = Math.abs(z2-z1), th = thick || 0.08;
+    var m = box(w, th, d, (x1+x2)/2, (y||0)+th/2, (z1+z2)/2, mat(color, 0.96));
+    return m;
+  }
+
+  var root = new THREE.Group();
+  scene.add(root);
+  var labelGroup = new THREE.Group();
+  root.add(labelGroup);
+  var shopFloors = [];
+
+  /* =========================================================
+     4. 搭一层楼
+     ========================================================= */
+
+  var CORRIDOR_COL = 0xc6cfdf;   // 走廊：浅灰石材
+  var WALL_COL     = 0xf1f4fa;   // 隔墙：冷白
+  var FURN_COL     = 0x97a5bc;   // 家具：深一档
+
+  function buildFloor() {
+    var O = OUT;
+
+    // 楼层底板（带厚度，边界干净）
+    var g = slab(O.x1-0.8, O.z1-0.8, O.x2+0.8, O.z2+0.8, 0xc9d2e0, -0.45, 0.45);
+    g.castShadow = false;
+    root.add(g);
+
+    // 铺满一层的浅色地坪
+    root.add(slab(O.x1, O.z1, O.x2, O.z2, 0xeceff5, 0, 0.14));
+
+    // 主走廊 + 纵向通道
+    root.add(slab(O.x1, -CORR, O.x2, CORR, CORRIDOR_COL, 0.14, 0.05));
+    root.add(slab(LANE.x1, O.z1, LANE.x2, O.z2, CORRIDOR_COL, 0.14, 0.05));
+
+    // 店铺
+    for (var i = 0; i < SHOPS.length; i++) buildShop(SHOPS[i]);
+
+    // 走廊中线导视（浅色细带）
+    root.add(slab(O.x1+1, -0.14, O.x2-1, 0.14, 0xeef2f8, 0.19, 0.012));
+    root.add(slab(10.42, O.z1+1, 10.7, O.z2-1, 0xeef2f8, 0.19, 0.012));
+
+    // 楼层边界矮台（0.35m，只做"切开的剖面"提示，不遮挡视线）
+    var edgeH = 0.35;
+    root.add(wall(O.x1, O.z1, O.x2, O.z1, edgeH, 0.34, 0xdae1ec));
+    root.add(wall(O.x1, O.z2, O.x2, O.z2, edgeH, 0.34, 0xdae1ec));
+    root.add(wall(O.x1, O.z1, O.x1, O.z2, edgeH, 0.34, 0xdae1ec));
+    root.add(wall(O.x2, O.z1, O.x2, O.z2, edgeH, 0.34, 0xdae1ec));
+  }
+
+  function buildShop(s) {
+    var c = shopCenter(s);
+    var north = shopIsNorth(s);
+    var doorX = c.x, DOOR_HALF = 1.5;
+    var doorLine = north ? s.z2 : s.z1;
+    var depth = Math.abs(s.z2 - s.z1);
+
+    // 店铺地面
+    var f = slab(s.x1+T/2, s.z1+T/2, s.x2-T/2, s.z2-T/2, s.color, 0.14, 0.05);
+    f.userData.shopId = s.id;
+    root.add(f);
+    shopFloors.push(f);
+
+    // 四面墙（朝走廊一面留门洞）
+    var edges = [
+      [s.x1, s.z1, s.x2, s.z1],
+      [s.x1, s.z2, s.x2, s.z2],
+      [s.x1, s.z1, s.x1, s.z2],
+      [s.x2, s.z1, s.x2, s.z2]
+    ];
+    for (var k = 0; k < 4; k++) {
+      var e = edges[k];
+      var isDoorSide = Math.abs(e[1]-doorLine) < 0.02 && Math.abs(e[3]-doorLine) < 0.02;
+      if (isDoorSide) {
+        if (doorX - DOOR_HALF > s.x1) {
+          var wa = wall(s.x1, doorLine, doorX-DOOR_HALF, doorLine, H, T, WALL_COL);
+          if (wa) root.add(wa);
+        }
+        if (doorX + DOOR_HALF < s.x2) {
+          var wb = wall(doorX+DOOR_HALF, doorLine, s.x2, doorLine, H, T, WALL_COL);
+          if (wb) root.add(wb);
+        }
+      } else {
+        var w = wall(e[0], e[1], e[2], e[3], H, T, WALL_COL);
+        if (w) root.add(w);
+      }
+    }
+
+    // 店内家具：靠后墙长货架 + 中间岛台（让空间有体积感）
+    var backZ = north ? s.z1 + T/2 + 0.55 : s.z2 - T/2 - 0.55;
+    var rackW = (s.x2 - s.x1) * 0.66;
+    root.add(box(rackW, 1.55, 0.8, c.x, 0.19 + 0.775, backZ, mat(FURN_COL, 0.85)));
+
+    var midZ = north ? c.z - 0.7 : c.z + 0.7;
+    root.add(box(rackW * 0.58, 1.05, 1.1, c.x, 0.19 + 0.525, midZ, mat(0xa9b5c9, 0.85)));
+
+    // 店招（浮在店铺上方）
+    var label = makeLabel(s.name);
+    label.position.set(c.x, H + 0.6, c.z);
+    labelGroup.add(label);
+  }
+
+  function makeLabel(text) {
+    var cv = document.createElement('canvas');
+    cv.width = 512; cv.height = 104;
+    var g = cv.getContext('2d');
+    var w = 512, h = 104, r = 26;
+
+    g.fillStyle = 'rgba(34,44,64,0.86)';
+    g.beginPath();
+    g.moveTo(r, 8); g.lineTo(w-r, 8);
+    g.quadraticCurveTo(w-8, 8, w-8, 8+r);
+    g.lineTo(w-8, h-8-r);
+    g.quadraticCurveTo(w-8, h-8, w-r, h-8);
+    g.lineTo(r, h-8);
+    g.quadraticCurveTo(8, h-8, 8, h-8-r);
+    g.lineTo(8, 8+r);
+    g.quadraticCurveTo(8, 8, r, 8);
+    g.closePath(); g.fill();
+
+    g.fillStyle = '#ffffff';
+    g.font = '600 42px "PingFang SC","Microsoft YaHei",sans-serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(text, w/2, h/2 + 2);
+
+    var tex = new THREE.CanvasTexture(cv);
+    tex.encoding = THREE.sRGBEncoding;
+    tex.minFilter = THREE.LinearFilter;
+    var sp = new THREE.Sprite(new THREE.SpriteMaterial({ map:tex, transparent:true, depthTest:false }));
+    sp.scale.set(2.7, 0.55, 1);
+    sp.renderOrder = 10;
+    return sp;
+  }
+
+  /* =========================================================
+     5. 路线
+     ========================================================= */
+
+  var routeGroup = new THREE.Group();
+  root.add(routeGroup);
+
+  function chamfer(pts, radius, seg) {
+    if (pts.length < 3) return pts.slice();
+    var out = [{ x:pts[0].x, z:pts[0].z }];
+    for (var i = 1; i < pts.length-1; i++) {
+      var p0 = pts[i-1], p1 = pts[i], p2 = pts[i+1];
+      var v1x = p0.x-p1.x, v1z = p0.z-p1.z;
+      var v2x = p2.x-p1.x, v2z = p2.z-p1.z;
+      var l1 = Math.sqrt(v1x*v1x+v1z*v1z) || 1;
+      var l2 = Math.sqrt(v2x*v2x+v2z*v2z) || 1;
+      var r  = Math.min(radius, l1*0.45, l2*0.45);
+      var ax = p1.x + v1x/l1*r, az = p1.z + v1z/l1*r;
+      var bx = p1.x + v2x/l2*r, bz = p1.z + v2z/l2*r;
+      for (var s = 0; s <= seg; s++) {
+        var t = s/seg, u = 1-t;
+        out.push({ x:u*u*ax + 2*u*t*p1.x + t*t*bx, z:u*u*az + 2*u*t*p1.z + t*t*bz });
+      }
+    }
+    var last = pts[pts.length-1];
+    out.push({ x:last.x, z:last.z });
+    return out;
+  }
+
+  function routePointsFor(shop) {
+    var d = shopDoor(shop);
+    var north = shopIsNorth(shop);
+    // 起点 → 沿走廊中线到店门正前方 → 穿过门洞进店 2 米（停在门口，不深入货架）
+    return [
+      { x:START.x, z:START.z },
+      { x:d.x, z:0 },
+      { x:d.x, z:north ? d.z - 2.0 : d.z + 2.0 }
+    ];
+  }
+
+  var ROUTE_Y = 0.30, ROUTE_R = 0.26;
+
+  function buildRoute(pts) {
+    while (routeGroup.children.length) {
+      var o = routeGroup.children.pop();
+      if (o.geometry) o.geometry.dispose();
+    }
+
+    var smooth = chamfer(pts, 2.2, 8);
+    var v3 = [];
+    for (var i = 0; i < smooth.length; i++) v3.push(new THREE.Vector3(smooth[i].x, ROUTE_Y, smooth[i].z));
+    if (v3.length < 2) return;
+
+    var curve = new THREE.CatmullRomCurve3(v3, false, 'centripetal', 0.5);
+    var tubeMat = new THREE.MeshStandardMaterial({
+      color:0x14d76e, emissive:0x0ea85a, emissiveIntensity:0.55,
+      roughness:0.4, metalness:0, transparent:true, opacity:0.97
+    });
+    var tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 340, ROUTE_R, 14, false), tubeMat);
+    tube.castShadow = true;
+    routeGroup.add(tube);
+
+    // 起点
+    var sMat = new THREE.MeshStandardMaterial({ color:0x0f9d58, emissive:0x0b7d45, emissiveIntensity:0.5, roughness:0.4 });
+    var disk = new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, 0.24, 32), sMat);
+    disk.position.set(pts[0].x, 0.31, pts[0].z);
+    disk.castShadow = true;
+    routeGroup.add(disk);
+
+    var ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.14, 10, 40),
+                              new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.9 }));
+    ring.rotation.x = -Math.PI/2;
+    ring.position.set(pts[0].x, 0.32, pts[0].z);
+    routeGroup.add(ring);
+
+    // 终点定位钉
+    var eMat = new THREE.MeshStandardMaterial({ color:0xe5342a, emissive:0xc0241b, emissiveIntensity:0.4, roughness:0.4 });
+    var last = pts[pts.length-1];
+    var pin = new THREE.Mesh(new THREE.SphereGeometry(0.72, 24, 18), eMat);
+    pin.position.set(last.x, 1.35, last.z);
+    pin.castShadow = true;
+    routeGroup.add(pin);
+    var stem = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 1.1, 12), eMat);
+    stem.position.set(last.x, 0.68, last.z);
+    routeGroup.add(stem);
+  }
+
+  /* =========================================================
+     6. 文字指引
+     ========================================================= */
+
+  function ang(a, b) { return Math.atan2(b.z-a.z, b.x-a.x); }
+  function norm(d) { while (d > Math.PI) d -= Math.PI*2; while (d < -Math.PI) d += Math.PI*2; return d; }
+
+  function renderSteps(pts, shop) {
+    var el = document.getElementById('steps');
+    document.getElementById('destName').textContent = shop ? shop.name : '—';
+
+    var html = '<div class="st start"><div class="ic">●</div><div class="tx"><em>当前位置</em>　主走廊西端</div></div>';
+
+    for (var i = 0; i < pts.length-1; i++) {
+      var len = Math.hypot(pts[i+1].x-pts[i].x, pts[i+1].z-pts[i].z);
+      if (len < 0.6) continue;
+      if (i > 0) {
+        var turn = norm(ang(pts[i], pts[i+1]) - ang(pts[i-1], pts[i]));
+        var word = Math.abs(turn) < 0.35 ? '继续直行' : (turn > 0 ? '右转' : '左转');
+        var icon = Math.abs(turn) < 0.35 ? '↑' : (turn > 0 ? '↱' : '↰');
+        html += '<div class="st"><div class="ic">' + icon + '</div><div class="tx"><em>' + word + '</em></div></div>';
+      }
+      html += '<div class="st"><div class="ic">↑</div><div class="tx">直行 <em>' + Math.round(len) + '</em> 米</div></div>';
+    }
+
+    html += '<div class="st end"><div class="ic">◆</div><div class="tx">到达 <em>' + (shop ? shop.name : '') + '</em></div></div>';
+    el.innerHTML = html;
+  }
+
+  /* =========================================================
+     7. 交互
+     ========================================================= */
+
+  var raycaster = new THREE.Raycaster();
+  var pointer = new THREE.Vector2();
+  var dragging = false, moved = false, lastX = 0, lastY = 0;
+
+  function setPointer(ev) {
+    var r = canvas.getBoundingClientRect();
+    pointer.x = ((ev.clientX-r.left)/r.width)*2 - 1;
+    pointer.y = -((ev.clientY-r.top)/r.height)*2 + 1;
+  }
+
+  canvas.addEventListener('pointerdown', function (ev) {
+    dragging = true; moved = false;
+    lastX = ev.clientX; lastY = ev.clientY;
+    canvas.setPointerCapture(ev.pointerId);
+  });
+
+  canvas.addEventListener('pointermove', function (ev) {
+    if (!dragging) return;
+    var dx = ev.clientX-lastX, dy = ev.clientY-lastY;
+    if (Math.abs(dx)+Math.abs(dy) > 3) moved = true;
+    lastX = ev.clientX; lastY = ev.clientY;
+    cam.azim -= dx * 0.006;
+    cam.polar = Math.max(0.25, Math.min(1.35, cam.polar - dy*0.004));
+    updateCamera();
+  });
+
+  canvas.addEventListener('pointerup', function (ev) {
+    dragging = false;
+    if (moved) return;
+    setPointer(ev);
+    raycaster.setFromCamera(pointer, camera);
+    var hit = raycaster.intersectObjects(shopFloors, false);
+    if (!hit.length) return;
+    var id = hit[0].object.userData.shopId;
+    for (var i = 0; i < SHOPS.length; i++) if (SHOPS[i].id === id) navigateTo(SHOPS[i]);
+  });
+
+  canvas.addEventListener('wheel', function (ev) {
+    ev.preventDefault();
+    cam.zoom = Math.max(0.45, Math.min(3.4, cam.zoom * (ev.deltaY > 0 ? 0.92 : 1.087)));
+    updateCamera();
+  }, { passive:false });
+
+  function navigateTo(s) {
+    var pts = routePointsFor(s);
+    buildRoute(pts);
+    renderSteps(pts, s);
+    var tip = document.getElementById('tip');
+    tip.textContent = '已规划到「' + s.name + '」';
+    tip.classList.add('show');
+    clearTimeout(tip._t);
+    tip._t = setTimeout(function () { tip.classList.remove('show'); }, 1600);
+  }
+
+  /* =========================================================
+     8. 启动
+     ========================================================= */
+
+  buildFloor();
+  resize();
+
+  setTimeout(function () {
+    var def = null;
+    for (var i = 0; i < SHOPS.length; i++) if (SHOPS[i].id === 'B203') def = SHOPS[i];
+    if (def) navigateTo(def);
+  }, 60);
+
+  (function loop() {
+    requestAnimationFrame(loop);
+    renderer.render(scene, camera);
+  })();
+
+  window.__NAV__ = {
+    scene:scene, camera:camera, shops:SHOPS,
+    navigate:function (id) { for (var i=0;i<SHOPS.length;i++) if (SHOPS[i].id===id) navigateTo(SHOPS[i]); },
+    setCam:function (azim, polar, zoom) {
+      cam.azim = azim; cam.polar = polar;
+      if (zoom) cam.zoom = zoom;
+      updateCamera();
+    }
+  };
+
+})();
+</script>
+</body>
+</html>

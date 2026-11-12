@@ -1,0 +1,36 @@
+{
+  "board_mm": [
+    210.0,
+    148.0
+  ],
+  "dpi": 300,
+  "pattern_side_mm": 90.0,
+  "groups": {
+    "A_qr": {
+      "file": "A_qr.png",
+      "codec": "QR",
+      "ecc": "h",
+      "version": 7,
+      "modules": 53,
+      "module_mm": 1.698,
+      "pattern_mm": 90.0,
+      "url": "https://lab-ar-nav.app.workbuddy.host/?sharecode=COAQ2BOKWL",
+      "url_len": 59
+    },
+    "B_apriltag": {
+      "file": "B_apriltag36h11.png",
+      "codec": "AprilTag-36h11",
+      "id": 0,
+      "modules": 10,
+      "module_mm": 9.0,
+      "pattern_mm": 90.0
+    },
+    "C_combo": {
+      "file": "C_qr_apriltag.png",
+      "codec": "QR+AprilTag",
+      "pattern_mm": 90.0,
+      "gap_mm": 10.0,
+      "note": "工程基准，不作为最终方案"
+    }
+  }
+}

@@ -1,0 +1,1499 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:,">
+<title>第一人称漫游 · 第二实验楼（2/3/4/5 层）</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden;background:#0b0f16;color:#e8eef7;
+  font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-user-select:none;user-select:none}
+#cv{display:block;width:100%;height:100%;cursor:grab}
+#cv.drag{cursor:grabbing}
+
+/* ---------- 左上：楼层 + 当前位置 ---------- */
+#panel{position:fixed;left:14px;top:14px;background:rgba(14,20,30,.82);
+  border:1px solid rgba(120,150,190,.28);border-radius:12px;padding:10px 12px;
+  backdrop-filter:blur(8px);min-width:214px}
+#panel .cap{font-size:10.5px;letter-spacing:.16em;color:#7f8ea6;font-weight:600}
+#floors{display:flex;gap:6px;margin:7px 0 10px}
+.fbtn{flex:1;text-align:center;padding:5px 0;font-size:12px;border-radius:7px;cursor:pointer;
+  background:#182233;border:1px solid #263449;color:#9fb0c6;transition:.15s}
+.fbtn:hover{border-color:#3d6fb8;color:#cfe2ff}
+.fbtn.on{background:#1a6cf5;border-color:#1a6cf5;color:#fff;font-weight:600}
+#roomName{font-size:15px;font-weight:600;color:#fff;line-height:1.35;margin-top:2px;
+  max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#roomId{font-size:11.5px;color:#7dd3a0;font-weight:600;margin-top:2px;min-height:16px}
+#posLine{font-size:11px;color:#8194ab;margin-top:6px;font-family:ui-monospace,Consolas,monospace}
+#panel .row{display:flex;gap:6px;margin-top:9px}
+.mini{flex:1;background:#1b2636;border:1px solid #2b3a4f;color:#c3d1e3;border-radius:7px;
+  padding:5px 0;font-size:11.5px;cursor:pointer;font-family:inherit}
+.mini:hover{border-color:#3d6fb8;color:#fff}
+
+/* ---------- 右上：小地图 ---------- */
+#mmWrap{position:fixed;right:14px;top:14px;background:rgba(14,20,30,.82);
+  border:1px solid rgba(120,150,190,.28);border-radius:12px;padding:8px;
+  backdrop-filter:blur(8px)}
+#mm{display:block;border-radius:6px;background:#0f1620}
+#mmCap{font-size:10px;letter-spacing:.12em;color:#7f8ea6;text-align:center;margin-top:5px}
+
+/* ---------- 准星 / 提示 ---------- */
+#cross{position:fixed;left:50%;top:50%;width:14px;height:14px;margin:-7px 0 0 -7px;
+  pointer-events:none;opacity:.75}
+#cross:before,#cross:after{content:'';position:absolute;background:#fff;border-radius:1px}
+#cross:before{left:6px;top:0;width:2px;height:14px}
+#cross:after{top:6px;left:0;height:2px;width:14px}
+
+#keys{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);
+  background:rgba(14,20,30,.82);border:1px solid rgba(120,150,190,.22);
+  border-radius:10px;padding:7px 14px;font-size:12px;color:#93a5bb;white-space:nowrap;
+  backdrop-filter:blur(8px)}
+#keys kbd{background:#233045;border:1px solid #33465f;border-bottom-width:2px;border-radius:4px;
+  padding:1px 6px;font-family:ui-monospace,Consolas,monospace;font-size:11px;color:#dce8f7;margin:0 1px}
+#keys b{color:#7dd3a0;font-weight:600}
+
+#stairTip{position:fixed;left:50%;bottom:58px;transform:translateX(-50%);
+  background:#1a6cf5;color:#fff;font-size:12.5px;padding:7px 16px;border-radius:20px;
+  opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap;
+  box-shadow:0 6px 22px rgba(26,108,245,.45)}
+#stairTip.show{opacity:1}
+
+#load{position:fixed;inset:0;background:#0b0f16;display:flex;align-items:center;
+  justify-content:center;flex-direction:column;gap:14px;z-index:20;transition:opacity .35s}
+#load .t{font-size:14px;color:#9fb0c6}
+#load .b{width:200px;height:3px;background:#1b2636;border-radius:2px;overflow:hidden}
+#load .b i{display:block;height:100%;width:40%;background:#1a6cf5;border-radius:2px;
+  animation:sl 1.1s ease-in-out infinite}
+@keyframes sl{0%{margin-left:-40%}100%{margin-left:100%}}
+#load.hide{opacity:0;pointer-events:none}
+#err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+  padding:40px;text-align:center;font-size:13.5px;line-height:1.9;color:#9fb0c6;z-index:30}
+#err b{display:block;font-size:15px;color:#ff6b6b;margin-bottom:8px}
+
+@media (max-width:820px){
+  #panel{min-width:0;padding:8px 10px;left:8px;top:8px}
+  #roomName{max-width:150px;font-size:13px}
+  #mmWrap{right:8px;top:8px;padding:6px}
+  #keys{font-size:10.5px;padding:6px 10px;max-width:calc(100% - 20px);overflow:hidden}
+  #mm{width:150px;height:150px}
+}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="panel">
+  <div class="cap">楼层 FLOOR</div>
+  <div id="floors"></div>
+  <div class="cap">当前位置 YOU ARE HERE</div>
+  <div id="roomName">—</div>
+  <div id="roomId"></div>
+  <div id="posLine">x 0.0 · z 0.0 · 眼高 1.62m</div>
+  <div class="row">
+    <button class="mini" id="btnStart" type="button">回到起点</button>
+    <button class="mini" id="btnMap" type="button">大图</button>
+  </div>
+</div>
+
+<div id="mmWrap">
+  <canvas id="mm" width="230" height="230"></canvas>
+  <div id="mmCap">平面导航 · 红点=你</div>
+</div>
+
+<div id="cross"></div>
+<div id="stairTip">按 <b>E</b> 上楼 · <b>Q</b> 下楼</div>
+<div id="keys">
+  <kbd>W</kbd><kbd>S</kbd> 前进/后退　<kbd>A</kbd><kbd>D</kbd> 左右平移　
+  <kbd>←</kbd><kbd>→</kbd> 转视角　鼠标拖拽转头　<kbd>Shift</kbd> 快走
+</div>
+
+<div id="load"><div class="t">正在生成三维楼层…</div><div class="b"><i></i></div></div>
+<div id="err"></div>
+
+<script src="../js/vendor/three.min.js"></script>
+<script src="data/floor-2f.js"></script>
+<script src="data/floor-3f.js"></script>
+<script src="data/floor-4f.js"></script>
+<script src="data/floor-5f.js"></script>
+<script>
+/* =========================================================================
+   nav3d/walk.html —— 单层第一人称漫游（2 / 3 / 4 / 5 层，走廊 + 穿门进房间）
+   -------------------------------------------------------------------------
+   数据：nav3d/data/floor-*.js（与三维沙盘同一套疏散图像素坐标）
+   比例：1 : 1 真实尺寸 —— 26 px = 1 m，墙高 2.90m，门洞 2.05m，人眼 1.62m
+   视角：W/S 前后、A/D 平移、←→ 或鼠标拖拽转头；Shift 快走
+   楼梯：站进楼梯间按 E 上楼 / Q 下楼（同 id 楼梯在目标层存在才生效）
+   ========================================================================= */
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function fatal(msg) {
+    var d = $('err');
+    d.style.display = 'flex';
+    d.innerHTML = '<div><b>页面没能跑起来</b>' + msg + '</div>';
+    $('load').classList.add('hide');
+    throw new Error(msg);
+  }
+  if (!window.THREE) fatal('three.js 没加载到（要 ../js/vendor/three.min.js）');
+  try {
+    var _c = document.createElement('canvas');
+    if (!(_c.getContext('webgl') || _c.getContext('experimental-webgl')))
+      fatal('这个浏览器没开 3D 加速（WebGL）。换 Chrome / Edge，或在设置里打开「使用硬件加速」。');
+  } catch (e) { fatal('这个浏览器没开 3D 加速（WebGL）。'); }
+
+  /* ---------------- 楼层注册表 ---------------- */
+  var FLOORS = {}, ORDER = ['B2-5', 'B2-4', 'B2-3', 'B2-2'];
+  var LABEL = { 'B2-5': '5F', 'B2-4': '4F', 'B2-3': '3F', 'B2-2': '2F' };
+  var LEVEL = { 'B2-2': 2, 'B2-3': 3, 'B2-4': 4, 'B2-5': 5 };
+  (function () {
+    var reg = window.FLOOR_DATA_BY_ID || {};
+    for (var k in reg) if (reg.hasOwnProperty(k)) FLOORS[k] = reg[k];
+    if (window.FLOOR_DATA) FLOORS['B2-3'] = window.FLOOR_DATA;   // 3F 是老格式
+  })();
+  ORDER = ORDER.filter(function (id) { return !!FLOORS[id]; });
+  if (!ORDER.length) fatal('楼层数据一份都没加载到（data/floor-*.js）。');
+
+  /* ---------------- 尺寸常量（米） ---------------- */
+  var H_WALL  = 2.90;     // 墙高 = 吊顶高
+  var H_DOOR  = 2.05;     // 门洞高
+  var H_SILL  = 0.85;     // 窗台高
+  var H_HEAD  = 2.35;     // 窗顶高
+  var EYE     = 1.62;     // 人眼高度
+  var PR      = 0.22;     // 人体半径（碰撞用；按肩半宽取，1.05m 门洞还剩 0.6m 通行宽）
+  var T_ROOM  = 0.20;     // 房间墙厚
+  var T_PERI  = 0.26;     // 外墙厚
+  var T_RUN   = 0.20;     // 补墙厚
+  var SLAB    = 0.16;     // 楼板厚
+  var WALL_COL = 0xd6dae2; // 室内墙面（浅灰白；纯白在室内会直接过曝）
+
+  var KIND = {
+    lab:     { floor: 0x7d97b4, ceil: 0xc4ccd8 },
+    office:  { floor: 0xa8907a, ceil: 0xc8cfda },
+    room:    { floor: 0x7fa895, ceil: 0xc4ccd8 },
+    store:   { floor: 0x8f84a3, ceil: 0xc8cfda },
+    service: { floor: 0x8c95a2, ceil: 0xc4ccd8 },
+    toilet:  { floor: 0xa89a63, ceil: 0xc8cfda },
+    stair:   { floor: 0x9d8282, ceil: 0xc4ccd8 }
+  };
+  var MM_KIND = {
+    lab: '#bcd7f2', office: '#f2d7b6', room: '#bde4cd', store: '#ddcbea',
+    service: '#ccd4de', toilet: '#e9d79a', stair: '#e3bdbd'
+  };
+
+  /* ---------------- three.js 骨架 ---------------- */
+  var canvas = $('cv');
+  var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(window.innerWidth, window.innerHeight, false);
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  var scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0f16);
+  scene.fog = new THREE.Fog(0x0b0f16, 34, 74);
+
+  var camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.05, 400);
+
+  /* 室内光照：不开阴影（几百个盒子 + 阴影贴图在某些集显上会掉到个位数帧率）。
+     明暗层次靠三件事做出来 —— ① 主光方向明确（从北侧窗户斜进来）② 墙面/地面用中等明度
+     ③ 每间房、每段走廊头顶一盏自发光灯板，近处亮远处暗。 */
+  scene.add(new THREE.AmbientLight(0xffffff, 0.22));
+  scene.add(new THREE.HemisphereLight(0xdfeaff, 0x3a424f, 0.22));
+  var sun = new THREE.DirectionalLight(0xfff1d6, 0.52);
+  sun.position.set(18, 40, -26);
+  scene.add(sun);
+  var fill = new THREE.DirectionalLight(0xa8c0e0, 0.16);
+  fill.position.set(-30, 16, 30);
+  scene.add(fill);
+
+  var root = new THREE.Group();
+  scene.add(root);
+
+  /* 共用几何：所有方盒都用同一个 1×1×1，靠 scale 变形，省内存 */
+  var UNIT = new THREE.BoxGeometry(1, 1, 1);
+  var matCache = {};
+  function mat(color, kind) {
+    var k = color + '|' + (kind || 's');
+    if (!matCache[k]) {
+      if (kind === 'basic')
+        matCache[k] = new THREE.MeshBasicMaterial({ color: color });
+      else if (kind === 'glass')
+        matCache[k] = new THREE.MeshStandardMaterial({
+          color: color, transparent: true, opacity: 0.20, roughness: 0.05,
+          metalness: 0, side: THREE.DoubleSide, depthWrite: false
+        });
+      else if (kind === 'win')
+        matCache[k] = new THREE.MeshStandardMaterial({
+          color: color, emissive: 0x9ccbe6, emissiveIntensity: 0.55,
+          transparent: true, opacity: 0.62, roughness: 0.08,
+          metalness: 0.02, side: THREE.DoubleSide, depthWrite: false
+        });
+      else
+        matCache[k] = new THREE.MeshStandardMaterial({
+          color: color, roughness: 0.88, metalness: 0
+        });
+    }
+    return matCache[k];
+  }
+
+  /* ---------------- 程序化贴图（不引外部图片，离线也能用） ----------------
+     地砖/吊顶用的都是 128×128 的小图 + RepeatWrapping，靠 repeat 铺满整间房。
+     没有贴图时纯色在近处看就是"一块塑料"，加上砖缝和一点噪点立刻像室内。 */
+  var TEX = {};
+  function makeTile(name, base, line, crosses) {
+    if (TEX[name]) return TEX[name];
+    var S = 128;
+    var cv = document.createElement('canvas');
+    cv.width = cv.height = S;
+    var g = cv.getContext('2d');
+    g.fillStyle = base;
+    g.fillRect(0, 0, S, S);
+    /* 轻微噪点：避免大面积纯色看着"发塑料" */
+    for (var i = 0; i < 900; i++) {
+      var a = (Math.random() * 0.05).toFixed(3);
+      g.fillStyle = 'rgba(' + (Math.random() < 0.5 ? '0,0,0,' : '255,255,255,') + a + ')';
+      g.fillRect(Math.random() * S | 0, Math.random() * S | 0, 2, 2);
+    }
+    g.strokeStyle = line;
+    g.lineWidth = 3;
+    g.strokeRect(0, 0, S, S);
+    if (crosses) {
+      g.lineWidth = 1.5;
+      g.beginPath();
+      g.moveTo(S / 2, 0); g.lineTo(S / 2, S);
+      g.moveTo(0, S / 2); g.lineTo(S, S / 2);
+      g.stroke();
+    }
+    var t = new THREE.CanvasTexture(cv);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.encoding = THREE.sRGBEncoding;
+    t.anisotropy = 4;
+    TEX[name] = t;
+    return t;
+  }
+
+  /* 铺一块带贴图的地面：tileMeters 是一块砖的实际边长（米）
+     glow = 自发光强度（吊顶用 —— 顶面朝下，光打不到，只能自己亮一点） */
+  function tiledBox(x1, z1, x2, z2, y0, y1, texName, base, line, crosses, tileMeters, glow) {
+    var w = Math.abs(x2 - x1), d = Math.abs(z2 - z1);
+    if (w < 0.01 || d < 0.01) return null;
+    var baseTex = makeTile(texName, base, line, crosses);
+    var t = baseTex.clone();
+    t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    var tm = tileMeters || 1.2;
+    t.repeat.set(Math.max(1, Math.round(w / tm)), Math.max(1, Math.round(d / tm)));
+    var m = new THREE.MeshStandardMaterial({
+      map: t, roughness: 0.93, metalness: 0,
+      emissive: glow ? 0xb9c4d4 : 0x000000,
+      emissiveIntensity: glow || 0
+    });
+    var mesh = new THREE.Mesh(UNIT, m);
+    mesh.scale.set(w, y1 - y0, d);
+    mesh.position.set((x1 + x2) / 2, (y0 + y1) / 2, (z1 + z2) / 2);
+    root.add(mesh);
+    return mesh;
+  }
+
+  /* 一块方盒：xz 是平面范围，y0~y1 是高度范围 */
+  function box(x1, z1, x2, z2, y0, y1, color, kind) {
+    var w = Math.abs(x2 - x1), d = Math.abs(z2 - z1), h = y1 - y0;
+    if (w < 0.004 || d < 0.004 || h < 0.004) return null;
+    var m = new THREE.Mesh(UNIT, mat(color, kind));
+    m.scale.set(w, h, d);
+    m.position.set((x1 + x2) / 2, (y0 + y1) / 2, (z1 + z2) / 2);
+    root.add(m);
+    return m;
+  }
+
+  /* 垫层/楼板：整块铺，但天井那一块必须挖穿 —— 
+     否则从走廊看过去，天井位置是一块和地面一样平的水泥板，竖井就白做了。 */
+  function slabWithVoid(x1, z1, x2, z2, y0, y1, color) {
+    if (!D || !D.atrium) { box(x1, z1, x2, z2, y0, y1, color); return; }
+    var vx1 = px(D.atrium.x1), vx2 = px(D.atrium.x2);
+    var vz1 = pz(D.atrium.y1), vz2 = pz(D.atrium.y2);
+    if (x2 < vx1 || x1 > vx2 || z2 < vz1 || z1 > vz2) { box(x1, z1, x2, z2, y0, y1, color); return; }
+    var parts = [
+      [x1, z1, x2, vz1],
+      [x1, vz2, x2, z2],
+      [x1, vz1, vx1, vz2],
+      [vx2, vz1, x2, vz2]
+    ];
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i];
+      if (Math.abs(p[2] - p[0]) < 0.03 || Math.abs(p[3] - p[1]) < 0.03) continue;
+      box(p[0], p[1], p[2], p[3], y0, y1, color);
+    }
+  }
+
+  /* ---------------- 当前层的运行态 ---------------- */
+  var D = null;                 // 楼层数据
+  var PPM = 26, OX = 0, OY = 0;
+  var COL = [];                 // 碰撞盒（米）：{x1,z1,x2,z2}
+  var WALK = [];                // 可站立矩形（米）：{x1,z1,x2,z2}
+  var ROOMS_M = [];             // 转换到米的房间：{id,name,kind,x1,z1,x2,z2,area}
+  var CORR_M = [];              // 走廊/支廊
+  var FID = ORDER[0];
+
+  function px(v) { return (v - OX) / PPM; }     // 图 x → 米 x
+  function pz(v) { return (v - OY) / PPM; }     // 图 y → 米 z
+
+  function addCol(x1, z1, x2, z2) {
+    if (x2 < x1) { var t = x1; x1 = x2; x2 = t; }
+    if (z2 < z1) { var t2 = z1; z1 = z2; z2 = t2; }
+    if (x2 - x1 < 0.01 || z2 - z1 < 0.01) return;
+    COL.push({ x1: x1, z1: z1, x2: x2, z2: z2 });
+  }
+  function addWalk(x1, z1, x2, z2) {
+    if (x2 < x1) { var t = x1; x1 = x2; x2 = t; }
+    if (z2 < z1) { var t2 = z1; z1 = z2; z2 = t2; }
+    WALK.push({ x1: x1, z1: z1, x2: x2, z2: z2 });
+  }
+
+  /* =======================================================================
+     建模
+     ======================================================================= */
+
+  /* 房间一面墙上的洞口：主门、door2、win（门对面开窗）、winSides（指定墙面开窗）
+     统一返回 [{type:'door'|'win', c, half}]，c 是沿墙方向的中点（米） */
+  function edgeHoles(r, rk, isV, lo, hi, x1, x2, z1, z2) {
+    var span = hi - lo, out = [];
+    function push(type, t, w) {
+      var half = Math.min((w || 1.05) / 2, span * 0.34);
+      var c = lo + span * (t === undefined || t === null ? 0.5 : t);
+      c = Math.min(hi - half, Math.max(lo + half, c));
+      out.push({ type: type, c: c, half: half });
+    }
+    if (r.door === rk) push('door', r.doorT, r.doorW || 1.05);
+    if (r.door2) {
+      var d2 = (r.door2.length !== undefined) ? r.door2 : [r.door2];
+      for (var i = 0; i < d2.length; i++) if (d2[i].k === rk) push('door', d2[i].t, d2[i].w || 1.05);
+    }
+    if (r.win && rk === ({ N: 'S', S: 'N', W: 'E', E: 'W' })[r.door]) {
+      var ww = Math.min(span * 0.42, 3.0);
+      out.push({ type: 'win', c: (lo + hi) / 2, half: ww / 2 });
+    }
+    if (r.winSides) {
+      var ws = (r.winSides.length !== undefined) ? r.winSides : [r.winSides];
+      for (var j = 0; j < ws.length; j++) if (ws[j].k === rk) push('win', ws[j].t, ws[j].w || 2.0);
+    }
+    out.sort(function (a, b) { return a.c - b.c; });
+    return out;
+  }
+
+  /* 沿一面墙铺墙：isV=竖直墙（沿 z 走），fixed 是墙中线；从 a 到 b（米） */
+  function wallStrip(isV, fixed, a, b, thick, y0, y1, color, collide, insetDir) {
+    if (b - a < 0.004 || y1 - y0 < 0.004) return;
+    var f0, f1;
+    if (insetDir) {                       // 往房间内侧让半个墙厚，避免两面墙重叠打架
+      f0 = (insetDir > 0) ? fixed : fixed - thick;
+      f1 = (insetDir > 0) ? fixed + thick : fixed;
+    } else {
+      f0 = fixed - thick / 2; f1 = fixed + thick / 2;
+    }
+    if (isV) {
+      box(f0, a, f1, b, y0, y1, color);
+      if (collide) addCol(f0, a, f1, b);
+      if (collide && y0 < 0.1) baseboard(isV, f0, f1, a, b, insetDir);
+    } else {
+      box(a, f0, b, f1, y0, y1, color);
+      if (collide) addCol(a, f0, b, f1);
+      if (collide && y0 < 0.1) baseboard(isV, f0, f1, a, b, insetDir);
+    }
+  }
+
+  /* 踢脚线：墙脚一圈 12cm 高的深色窄条。室内"像不像真的"有一半靠它 —— 
+     纯色墙直接接地，看着像积木；有踢脚线才有"墙面/地面是两种材料"的感觉。 */
+  function baseboard(isV, f0, f1, a, b, insetDir) {
+    var BB = 0.10, HB = 0.12;
+    var g0, g1;
+    if (insetDir > 0) { g0 = f1; g1 = f1 + BB; }
+    else if (insetDir < 0) { g0 = f0 - BB; g1 = f0; }
+    else { g0 = f0; g1 = f1; }
+    var col = 0x6b7482;
+    if (isV) box(g0, a, g1, b, 0, HB, col);
+    else box(a, g0, b, g1, 0, HB, col);
+  }
+
+  /* 一面墙 + 洞口 */
+  function buildWall(isV, fixed, lo, hi, thick, color, holes, insetDir) {
+    var cur = lo;
+    for (var i = 0; i < holes.length; i++) {
+      var h = holes[i];
+      var s = Math.max(lo, h.c - h.half), t = Math.min(hi, h.c + h.half);
+      if (s - cur > 0.005) wallStrip(isV, fixed, cur, s, thick, 0, H_WALL, color, true, insetDir);
+      if (s < t) {
+        if (h.type === 'door') {
+          /* 门洞：底下全通，上面留过梁 */
+          wallStrip(isV, fixed, s, t, thick, H_DOOR, H_WALL, color, false, insetDir);
+        } else {
+          /* 窗：窗台墙挡人 + 玻璃 + 过梁 */
+          wallStrip(isV, fixed, s, t, thick, 0, H_SILL, color, true, insetDir);
+          var gIn = insetDir ? ((insetDir > 0 ? fixed + thick * 0.35 : fixed - thick * 0.35)) : fixed;
+          if (isV) box(gIn - 0.02, s + 0.02, gIn + 0.02, t - 0.02, H_SILL, H_HEAD, 0x9fd8f5, 'win');
+          else box(s + 0.02, gIn - 0.02, t - 0.02, gIn + 0.02, H_SILL, H_HEAD, 0x9fd8f5, 'win');
+          wallStrip(isV, fixed, s, t, thick, H_HEAD, H_WALL, color, false, insetDir);
+        }
+      }
+      cur = Math.max(cur, t);
+    }
+    if (hi - cur > 0.005) wallStrip(isV, fixed, cur, hi, thick, 0, H_WALL, color, true, insetDir);
+  }
+
+  /* 一扇门扇：从铰链处转开 72°（纯装饰，不参与碰撞，免得人被门板卡住） */
+  var DOOR_OPEN = 72 * Math.PI / 180;
+  function doorLeaf(rk, x1, x2, z1, z2, wx, wz, dWidth, opt) {
+    opt = opt || {};
+    var isV = (rk === 'W' || rk === 'E');
+    var total = isV ? (z2 - z1) : (x2 - x1);
+    if (total < 0.2) return;
+    var nx = 0, nz = 0;
+    if (rk === 'N') nz = 1; else if (rk === 'S') nz = -1;
+    else if (rk === 'W') nx = 1; else nx = -1;
+    if (opt.swing === 'out') { nx = -nx; nz = -nz; }
+    var leaves = (opt.leaf === 2) ? 2 : 1;
+    var dw = Math.min(dWidth, total) / leaves;
+    var c = isV ? wz : wx;
+    var cs = Math.cos(DOOR_OPEN), sn = Math.sin(DOOR_OPEN);
+    for (var i = 0; i < leaves; i++) {
+      var hx, hz, ux, uz;
+      if (isV) {
+        var sg = (leaves === 2) ? (i === 0 ? 1 : -1) : (opt.hinge === 'hi' ? -1 : 1);
+        hz = c + (leaves === 2 ? (i === 0 ? -dWidth / 2 : dWidth / 2)
+                               : (opt.hinge === 'hi' ? dWidth / 2 : -dWidth / 2));
+        hx = (rk === 'W') ? x1 : x2;
+        ux = 0; uz = sg;
+      } else {
+        var sg2 = (leaves === 2) ? (i === 0 ? 1 : -1) : (opt.hinge === 'hi' ? -1 : 1);
+        hx = c + (leaves === 2 ? (i === 0 ? -dWidth / 2 : dWidth / 2)
+                               : (opt.hinge === 'hi' ? dWidth / 2 : -dWidth / 2));
+        hz = (rk === 'N') ? z1 : z2;
+        ux = sg2; uz = 0;
+      }
+      var fx = hx + ux * dw * cs + nx * dw * sn;
+      var fz = hz + uz * dw * cs + nz * dw * sn;
+      var len = Math.hypot(fx - hx, fz - hz);
+      if (len < 0.1) continue;
+      var pane = new THREE.Mesh(UNIT, mat(0x8a6142));
+      pane.scale.set(len, H_DOOR - 0.06, 0.05);
+      pane.position.set((hx + fx) / 2, (H_DOOR - 0.06) / 2, (hz + fz) / 2);
+      pane.rotation.y = -Math.atan2(fz - hz, fx - hx);
+      root.add(pane);
+    }
+  }
+
+  function buildRoom(r) {
+    var x1 = px(r.x1), x2 = px(r.x2), z1 = pz(r.y1), z2 = pz(r.y2);
+    if (x2 < x1) { var t = x1; x1 = x2; x2 = t; }
+    if (z2 < z1) { var t2 = z1; z1 = z2; z2 = t2; }
+    var kd = KIND[r.kind] || KIND.room;
+
+    /* 地面：房间铺 60cm 方砖，靠贴图把"这是地"讲清楚 */
+    tiledBox(x1, z1, x2, z2, -SLAB, 0, 'tile-room', kdBG(kd.floor), 'rgba(0,0,0,.16)', true, 0.6);
+    tiledBox(x1, z1, x2, z2, H_WALL - 0.06, H_WALL, 'tile-ceil', '#dde3ec', 'rgba(0,0,0,.05)', false, 2.4, 0.30);
+
+    ROOMS_M.push({ id: r.id, name: r.name, kind: r.kind,
+                   x1: x1, z1: z1, x2: x2, z2: z2,
+                   area: (x2 - x1) * (z2 - z1), door: r.door || 'S' });
+    addWalk(x1, z1, x2, z2);
+
+    var opn = r.open || [];
+    var edges = [
+      { k: 'N', isV: false, fixed: z1, lo: x1, hi: x2, inset: 1 },
+      { k: 'S', isV: false, fixed: z2, lo: x1, hi: x2, inset: -1 },
+      { k: 'W', isV: true,  fixed: x1, lo: z1, hi: z2, inset: 1 },
+      { k: 'E', isV: true,  fixed: x2, lo: z1, hi: z2, inset: -1 }
+    ];
+    for (var i = 0; i < 4; i++) {
+      var e = edges[i];
+      if (opn.indexOf(e.k) >= 0) continue;          // 这面墙被拆掉了：整面敞开
+      var holes = edgeHoles(r, e.k, e.isV, e.lo, e.hi, x1, x2, z1, z2);
+      buildWall(e.isV, e.fixed, e.lo, e.hi, T_ROOM, WALL_COL, holes, e.inset);
+
+      /* 门牌 + 门框（门牌装在走廊一侧，进门前一抬头就看见房间号） */
+      for (var hh = 0; hh < holes.length; hh++) {
+        if (holes[hh].type !== 'door') continue;
+        doorFrame(e, holes[hh].c, holes[hh].half);
+        roomPlate(r, e, holes[hh].c, holes[hh].half);
+      }
+
+      /* 门扇（装饰） */
+      if (r.swing && r.door === e.k) {
+        var DW = Math.min(r.doorW || 1.05, (e.hi - e.lo) * 0.85);
+        var t01 = (r.doorT === undefined || r.doorT === null) ? 0.5 : r.doorT;
+        var half = Math.min(DW / 2, (e.hi - e.lo) * 0.34);
+        var cc = Math.min(e.hi - half, Math.max(e.lo + half, e.lo + (e.hi - e.lo) * t01));
+        if (e.isV) doorLeaf(e.k, x1, x2, z1, z2, 0, cc, DW, { swing: r.swing, hinge: r.hinge, leaf: r.leaf });
+        else doorLeaf(e.k, x1, x2, z1, z2, cc, 0, DW, { swing: r.swing, hinge: r.hinge, leaf: r.leaf });
+      }
+    }
+
+    /* 房间家具：一排实验台 + 一个柜子，有碰撞，但都贴着墙放，不妨碍进出 */
+    var w2 = x2 - x1, d2 = z2 - z1;
+    if (w2 > 2.6 && d2 > 2.2 && r.kind !== 'toilet' && r.kind !== 'stair') {
+      var deskCol = (r.kind === 'office') ? 0x8d7358 : (r.kind === 'lab' ? 0x6f7d8f : 0x7b8899);
+      /* 靠里侧那面墙一排台子 */
+      var tw = Math.min(w2 * 0.62, 6.0), td = Math.min(d2 * 0.20, 0.95);
+      var tx = (x1 + x2) / 2, tz = z2 - td / 2 - 0.35;
+      if (d2 > w2) { tw = Math.min(d2 * 0.62, 6.0); td = Math.min(w2 * 0.20, 0.95); tx = x2 - td / 2 - 0.35; tz = (z1 + z2) / 2; }
+      box(tx - tw / 2, tz - td / 2, tx + tw / 2, tz + td / 2, 0, 0.78, deskCol);
+      box(tx - tw / 2, tz - td / 2, tx + tw / 2, tz + td / 2, 0.78, 0.82, 0xc8cdd6);
+      addCol(tx - tw / 2, tz - td / 2, tx + tw / 2, tz + td / 2);
+      /* 一个靠另一面墙的柜子 */
+      if (w2 > 4 && d2 > 4) {
+        var cw = Math.min(w2 * 0.18, 1.1), cd = Math.min(d2 * 0.28, 1.6);
+        var cx2 = (d2 > w2 ? x1 + cw / 2 + 0.3 : x1 + cw / 2 + 0.3);
+        var cz2 = (d2 > w2 ? z1 + 0.8 + cd / 2 : z1 + cd / 2 + 0.3);
+        box(cx2 - cw / 2, cz2 - cd / 2, cx2 + cw / 2, cz2 + cd / 2, 0, 1.9, 0x9aa4b2);
+        addCol(cx2 - cw / 2, cz2 - cd / 2, cx2 + cw / 2, cz2 + cd / 2);
+      }
+    }
+  }
+
+  /* 门框：洞口两侧竖向包边 + 上方横梁，颜色比墙略深，门洞一眼可辨 */
+  function doorFrame(e, c, half) {
+    var FR = 0.07, col = 0xcfd6e0;
+    if (e.isV) {
+      box(e.fixed - 0.10, c - half - FR, e.fixed + 0.10, c - half, 0, H_DOOR + FR, col);
+      box(e.fixed - 0.10, c + half, e.fixed + 0.10, c + half + FR, 0, H_DOOR + FR, col);
+      box(e.fixed - 0.10, c - half - FR, e.fixed + 0.10, c + half + FR, H_DOOR, H_DOOR + FR, col);
+    } else {
+      box(c - half - FR, e.fixed - 0.10, c - half, e.fixed + 0.10, 0, H_DOOR + FR, col);
+      box(c + half, e.fixed - 0.10, c + half + FR, e.fixed + 0.10, 0, H_DOOR + FR, col);
+      box(c - half - FR, e.fixed - 0.10, c + half + FR, e.fixed + 0.10, H_DOOR, H_DOOR + FR, col);
+    }
+  }
+
+  /* 门牌：走廊一侧、门洞上方一块小牌子，写着房间号 */
+  var plateCache = {};
+  function roomPlate(r, e, c, half) {
+    var txt = r.id || '';
+    if (!txt) return;
+    var tex = plateCache[txt];
+    if (!tex) {
+      var cv = document.createElement('canvas');
+      cv.width = 192; cv.height = 96;
+      var g = cv.getContext('2d');
+      g.fillStyle = '#f7fafd';
+      g.fillRect(0, 0, 192, 96);
+      g.strokeStyle = '#8fa0b6';
+      g.lineWidth = 5;
+      g.strokeRect(3, 3, 186, 90);
+      g.fillStyle = '#243444';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.font = '700 ' + (txt.length > 3 ? 40 : 52) + 'px "PingFang SC",system-ui,sans-serif';
+      g.fillText(txt, 96, 52);
+      tex = new THREE.CanvasTexture(cv);
+      tex.encoding = THREE.sRGBEncoding;
+      tex.minFilter = THREE.LinearFilter;
+      plateCache[txt] = tex;
+    }
+    var m = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
+    var PW = 0.40, PH = 0.20;
+    var pl = new THREE.Mesh(new THREE.PlaneGeometry(PW, PH), m);
+    /* 挂在门洞正上方、朝房间外侧（走廊那一侧） */
+    var off = 0.12;
+    if (e.isV) {
+      pl.position.set(e.fixed + (e.inset > 0 ? -off : off), H_DOOR + 0.20, c);
+      pl.rotation.y = (e.inset > 0) ? -Math.PI / 2 : Math.PI / 2;
+    } else {
+      pl.position.set(c, H_DOOR + 0.20, e.fixed + (e.inset > 0 ? -off : off));
+      pl.rotation.y = (e.inset > 0) ? Math.PI : 0;
+    }
+    root.add(pl);
+  }
+
+  /* 把 0xRRGGBB 转成 css 颜色字符串（贴图底板用） */
+  function kdBG(hex) {
+    var s = hex.toString(16);
+    while (s.length < 6) s = '0' + s;
+    return '#' + s;
+  }
+
+  function buildFloorRect(o, color) {
+    var x1 = px(o.x1), x2 = px(o.x2), z1 = pz(o.y1), z2 = pz(o.y2);
+    if (x2 < x1) { var t = x1; x1 = x2; x2 = t; }
+    if (z2 < z1) { var t2 = z1; z1 = z2; z2 = t2; }
+    /* 走廊铺 80cm 大砖（磨光石材），比房间的 60cm 方砖更亮一点 */
+    tiledBox(x1, z1, x2, z2, -SLAB, 0, 'tile-corr', '#c3cbd6', 'rgba(0,0,0,.13)', false, 0.8);
+    tiledBox(x1, z1, x2, z2, H_WALL - 0.06, H_WALL, 'tile-ceil', '#dde3ec', 'rgba(0,0,0,.05)', false, 2.4, 0.30);
+    addWalk(x1, z1, x2, z2);
+    return { x1: x1, z1: z1, x2: x2, z2: z2 };
+  }
+
+  /* 吊灯条：走廊顶上一条，纯发光材质；顺带在头顶投一小片亮斑 */
+  function ceilingLamp(x1, z1, x2, z2) {
+    var cx = (x1 + x2) / 2, cz = (z1 + z2) / 2;
+    var w = Math.abs(x2 - x1), d = Math.abs(z2 - z1);
+    var long = Math.max(w, d);
+    var n = Math.max(1, Math.min(6, Math.floor(long / 3.2)));
+    for (var i = 0; i < n; i++) {
+      var t = (i + 0.5) / n;
+      var px0 = (w > d) ? (Math.min(x1, x2) + w * t) : cx;
+      var pz0 = (w > d) ? cz : (Math.min(z1, z2) + d * t);
+      box(px0 - 0.55, pz0 - 0.10, px0 + 0.55, pz0 + 0.10,
+          H_WALL - 0.10, H_WALL - 0.06, 0xfff4e0, 'basic');
+    }
+  }
+
+  /* 天井：2/3/4 层中间是通高的。
+     单层漫游里只画一层，所以这里把"往下几层"补出来：
+       · 井壁一圈竖向墙，越往下越暗
+       · 每 -3.6m 挑出一圈楼板边（下面几层的走廊边），有这一圈才看得出"这是竖井"
+       · 井口围一圈玻璃护栏，站边上往下看得到井底，但过不去
+       · 顶上补一块吊顶 + 天窗，否则抬头一片黑 */
+  function buildAtrium(a) {
+    if (!a) return;
+    var x1 = px(a.x1), x2 = px(a.x2), z1 = pz(a.y1), z2 = pz(a.y2);
+    var w = x2 - x1, d = z2 - z1;
+    var DEPTH = 10.8, FLOOR_H = 3.6;
+
+    /* 井底 */
+    box(x1, z1, x2, z2, -DEPTH - 0.3, -DEPTH, 0x8f8676);
+
+    /* 一圈竖向井壁，分三段由亮到暗 */
+    var bands = [[0, -3.6, 0xb0b9c6], [-3.6, -7.2, 0x949eae], [-7.2, -DEPTH, 0x7a8494]];
+    for (var b = 0; b < bands.length; b++) {
+      var y0 = bands[b][0], y1 = bands[b][1], col = bands[b][2];
+      box(x1, z1, x1 + 0.16, z2, y1, y0, col);
+      box(x2 - 0.16, z1, x2, z2, y1, y0, col);
+      box(x1, z1, x2, z1 + 0.16, y1, y0, col);
+      box(x1, z2 - 0.16, x2, z2, y1, y0, col);
+    }
+
+    /* 下面几层的楼板边：挑出来 1.0m 一圈，让竖井有"层次" */
+    for (var f = 1; f * FLOOR_H < DEPTH; f++) {
+      var y = -f * FLOOR_H;
+      var EW = 1.0, TH2 = 0.26;
+      box(x1, z1, x1 + EW, z2, y - TH2, y, 0xc6cdd8);
+      box(x2 - EW, z1, x2, z2, y - TH2, y, 0xc6cdd8);
+      box(x1 + EW, z1, x2 - EW, z1 + EW, y - TH2, y, 0xc6cdd8);
+      box(x1 + EW, z2 - EW, x2 - EW, z2, y - TH2, y, 0xc6cdd8);
+    }
+
+    /* 天井上方的吊顶 + 天窗 */
+    tiledBox(x1, z1, x2, z2, H_WALL, H_WALL + 0.12, 'tile-ceil', '#cfd7e3', 'rgba(0,0,0,.06)', false, 2.4, 0.22);
+    box(x1 + w * 0.18, z1 + d * 0.18, x2 - w * 0.18, z2 - d * 0.18,
+        H_WALL - 0.04, H_WALL, 0xeaf4ff, 'basic');
+
+    /* 井口一圈玻璃护栏（站这儿往下看得到井底，但过不去） */
+    var RG = 1.05, TH = 0.05;
+    box(x1, z1, x2, z1 + TH, 0, RG, 0xa9d8f2, 'glass');
+    box(x1, z2 - TH, x2, z2, 0, RG, 0xa9d8f2, 'glass');
+    box(x1, z1, x1 + TH, z2, 0, RG, 0xa9d8f2, 'glass');
+    box(x2 - TH, z1, x2, z2, 0, RG, 0xa9d8f2, 'glass');
+    box(x1, z1, x2, z1 + 0.09, RG, RG + 0.06, 0xcfd9e6);
+    box(x1, z2 - 0.09, x2, z2, RG, RG + 0.06, 0xcfd9e6);
+    box(x1, z1, x1 + 0.09, z2, RG, RG + 0.06, 0xcfd9e6);
+    box(x2 - 0.09, z1, x2, z2, RG, RG + 0.06, 0xcfd9e6);
+    /* 立柱 */
+    var n = Math.max(2, Math.round(w / 2.6));
+    for (var k = 0; k <= n; k++) {
+      var xx = x1 + w * k / n;
+      box(xx - 0.045, z1 - 0.03, xx + 0.045, z1 + 0.08, 0, RG, 0xcfd9e6);
+      box(xx - 0.045, z2 - 0.08, xx + 0.045, z2 + 0.03, 0, RG, 0xcfd9e6);
+    }
+    addCol(x1, z1, x2, z2);                 // 整块天井不可走
+  }
+
+  /* 玻璃幕墙（西走廊西侧那一整排）：挡人、能看穿 */
+  function buildGlass(list) {
+    for (var i = 0; i < list.length; i++) {
+      var g = list[i];
+      var x1 = px(g.x1), x2 = px(g.x2), z1 = pz(g.y1), z2 = pz(g.y2);
+      var isV = Math.abs(x2 - x1) < 0.001;
+      if (isV) {
+        box(x1 - 0.03, Math.min(z1, z2), x1 + 0.03, Math.max(z1, z2), 0.06, H_WALL - 0.12, 0x9fd8f5, 'glass');
+        /* 竖挺 */
+        var len = Math.abs(z2 - z1), n = Math.max(2, Math.round(len / 1.3));
+        for (var k = 0; k <= n; k++) {
+          var zz = Math.min(z1, z2) + len * k / n;
+          box(x1 - 0.07, zz - 0.04, x1 + 0.07, zz + 0.04, 0, H_WALL, 0xdfe7f2);
+        }
+        box(x1 - 0.09, Math.min(z1, z2), x1 + 0.09, Math.max(z1, z2), 0, 0.10, 0xdfe7f2);
+        addCol(x1 - 0.09, Math.min(z1, z2), x1 + 0.09, Math.max(z1, z2));
+      } else {
+        box(Math.min(x1, x2), z1 - 0.03, Math.max(x1, x2), z1 + 0.03, 0.06, H_WALL - 0.12, 0x9fd8f5, 'glass');
+        var len2 = Math.abs(x2 - x1), n2 = Math.max(2, Math.round(len2 / 1.3));
+        for (var k2 = 0; k2 <= n2; k2++) {
+          var xx = Math.min(x1, x2) + len2 * k2 / n2;
+          box(xx - 0.04, z1 - 0.07, xx + 0.04, z1 + 0.07, 0, H_WALL, 0xdfe7f2);
+        }
+        box(Math.min(x1, x2), z1 - 0.09, Math.max(x1, x2), z1 + 0.09, 0, 0.10, 0xdfe7f2);
+        addCol(Math.min(x1, x2), z1 - 0.09, Math.max(x1, x2), z1 + 0.09);
+      }
+    }
+  }
+
+  /* 补墙（wallRuns）：形体同沙盘，门/窗洞照给 */
+  function buildRuns(list) {
+    for (var i = 0; i < list.length; i++) {
+      var g = list[i];
+      var isV = (g.x1 === g.x2);
+      var fixed = isV ? px(g.x1) : pz(g.y1);
+      var a0 = isV ? Math.min(g.y1, g.y2) : Math.min(g.x1, g.x2);
+      var a1 = isV ? Math.max(g.y1, g.y2) : Math.max(g.x1, g.x2);
+      var lo = isV ? pz(a0) : px(a0), hi = isV ? pz(a1) : px(a1);
+      var span = hi - lo;
+      if (span < 0.05) continue;
+      var holes = [];
+      if (g.door) {
+        var dw = Math.min(g.door.w || 1.1, span * 0.85);
+        var dt = (g.door.t === undefined) ? 0.5 : g.door.t;
+        var hd = dw / 2;
+        holes.push({ type: 'door', half: hd,
+                     c: Math.min(hi - hd, Math.max(lo + hd, lo + span * dt)) });
+      }
+      if (g.win) {
+        var ww = Math.min(g.win.w || 2.0, span * 0.9);
+        var wt = (g.win.t === undefined) ? 0.5 : g.win.t;
+        var hw = ww / 2;
+        holes.push({ type: 'win', half: hw,
+                     c: Math.min(hi - hw, Math.max(lo + hw, lo + span * wt)) });
+      }
+      holes.sort(function (p, q) { return p.c - q.c; });
+      buildWall(isV, fixed, lo, hi, T_RUN, WALL_COL, holes, 0);
+    }
+  }
+
+  /* 外墙一圈：连续实墙，遇到本来就是窗的位置留玻璃 */
+  function buildPerimeter(list, holes) {
+    holes = holes || [];
+    for (var i = 0; i < list.length; i++) {
+      var s = list[i];
+      var isV = (s.x1 === s.x2);
+      var fixedPx = isV ? s.x1 : s.y1;
+      var a0 = isV ? Math.min(s.y1, s.y2) : Math.min(s.x1, s.x2);
+      var a1 = isV ? Math.max(s.y1, s.y2) : Math.max(s.x1, s.x2);
+      if (a1 - a0 < 4) continue;
+
+      /* 收集这段上的窗洞（图坐标 → 米） */
+      var cuts = [];
+      for (var q = 0; q < holes.length; q++) {
+        var h = holes[q];
+        if ((h.x1 === h.x2) !== isV) continue;
+        if (Math.abs((isV ? h.x1 : h.y1) - fixedPx) > 4) continue;
+        var h0 = isV ? Math.min(h.y1, h.y2) : Math.min(h.x1, h.x2);
+        var h1 = isV ? Math.max(h.y1, h.y2) : Math.max(h.x1, h.x2);
+        var lo = Math.max(a0, h0), hi = Math.min(a1, h1);
+        if (hi - lo > 2) cuts.push({ type: 'win', cA: lo, cB: hi });
+      }
+      cuts.sort(function (p, r) { return p.cA - r.cA; });
+
+      var lo2 = isV ? pz(a0) : px(a0), hi2 = isV ? pz(a1) : px(a1);
+      var fixed = isV ? px(fixedPx) : pz(fixedPx);
+      var cur = lo2;
+      for (var c = 0; c < cuts.length; c++) {
+        var s0 = isV ? pz(cuts[c].cA) : px(cuts[c].cA);
+        var s1 = isV ? pz(cuts[c].cB) : px(cuts[c].cB);
+        var hs = [{ type: 'win', c: (s0 + s1) / 2, half: (s1 - s0) / 2 }];
+        buildWall(isV, fixed, cur, s0, T_PERI, WALL_COL, [], 0);
+        buildWall(isV, fixed, s0, s1, T_PERI, WALL_COL, hs, 0);
+        cur = s1;
+      }
+      buildWall(isV, fixed, cur, hi2, T_PERI, WALL_COL, [], 0);
+    }
+  }
+
+  /* 楼梯间：只画一个"往上的暗示"——踏步 + 扶手，不做真爬升 */
+  function buildStairs(list) {
+    for (var i = 0; i < list.length; i++) {
+      var st = list[i];
+      var x1 = px(st.x1), x2 = px(st.x2), z1 = pz(st.y1), z2 = pz(st.y2);
+      var isEW = (st.dir === 'EW');
+      var n = 8, rise = 0.055;
+      var along = isEW ? (x2 - x1) : (z2 - z1);
+      var step = along / n;
+      for (var k = 0; k < n; k++) {
+        var h = 0.05 + k * rise;
+        if (isEW) box(x1 + k * step, z1 + 0.15, x1 + (k + 1) * step - 0.02, z2 - 0.15, 0, h, 0xdfe6ef);
+        else box(x1 + 0.15, z1 + k * step, x2 - 0.15, z1 + (k + 1) * step - 0.02, 0, h, 0xdfe6ef);
+      }
+      /* 扶手 */
+      if (isEW) box(x1, z1 + 0.06, x2, z1 + 0.14, 0, 1.0, 0xcfd9e6);
+      else box(x1 + 0.06, z1, x1 + 0.14, z2, 0, 1.0, 0xcfd9e6);
+    }
+  }
+
+  /* 洗手台 */
+  function buildFixtures(list) {
+    for (var i = 0; i < list.length; i++) {
+      var f = list[i];
+      var x1 = px(f.x1), x2 = px(f.x2), z1 = pz(f.y1), z2 = pz(f.y2);
+      box(x1, z1, x2, z2, 0, 0.82, 0xe8eef6);
+      addCol(x1, z1, x2, z2);
+      var n = f.n || 4;
+      for (var k = 0; k < n; k++) {
+        var t = (k + 0.5) / n;
+        var bx = x1 + (x2 - x1) * t, bz = z1 + (z2 - z1) * t;
+        if ((x2 - x1) < (z2 - z1)) bx = (x1 + x2) / 2; else bz = (z1 + z2) / 2;
+        box(bx - 0.16, bz - 0.16, bx + 0.16, bz + 0.16, 0.82, 0.90, 0xffffff);
+      }
+    }
+  }
+
+  /* ---------------- 生成一层 ---------------- */
+  function buildFloorScene(fid) {
+    /* 清空 */
+    while (root.children.length) root.remove(root.children[0]);
+    for (var d in matCache) if (matCache.hasOwnProperty(d)) delete matCache[d];
+    COL = []; WALK = []; ROOMS_M = []; CORR_M = [];
+
+    D = FLOORS[fid];
+    FID = fid;
+    PPM = D.pxPerMeter || 26;
+    OX = D.originPx ? D.originPx[0] : 0;
+    OY = D.originPx ? D.originPx[1] : 0;
+
+    /* 楼体范围外给一块暗色地坪，别让楼"浮在虚空里" */
+    var bx1 = px(D.bounds.x1) - 1.5, bz1 = pz(D.bounds.y1) - 1.5;
+    var bx2 = px(D.bounds.x2) + 1.5, bz2 = pz(D.bounds.y2) + 1.5;
+    box(bx1, bz1, bx2, bz2, -0.55, -0.42, 0x1b2430);
+
+    /* 室外缺口（西侧那块空地）——铺暗一点，人进不去 */
+    if (D.exterior) for (var e = 0; e < D.exterior.length; e++) {
+      var ex = D.exterior[e];
+      box(px(ex.x1), pz(ex.y1), px(ex.x2), pz(ex.y2), -0.42, -0.38, 0x2a3644);
+    }
+
+    /* 走廊 / 支廊地面 */
+    var i;
+    if (D.corridors) for (i = 0; i < D.corridors.length; i++) {
+      var r1 = buildFloorRect(D.corridors[i], 0xcfd8e4);
+      CORR_M.push({ id: D.corridors[i].id, name: D.corridors[i].name,
+                    x1: r1.x1, z1: r1.z1, x2: r1.x2, z2: r1.z2 });
+      ceilingLamp(r1.x1, r1.z1, r1.x2, r1.z2);
+    }
+    if (D.spurs) for (i = 0; i < D.spurs.length; i++) {
+      var r2 = buildFloorRect(D.spurs[i], 0xcfd8e4);
+      CORR_M.push({ id: D.spurs[i].id, name: D.spurs[i].name,
+                    x1: r2.x1, z1: r2.z1, x2: r2.x2, z2: r2.z2 });
+      ceilingLamp(r2.x1, r2.z1, r2.x2, r2.z2);
+    }
+
+    /* 天井、楼梯、房间 */
+    buildAtrium(D.atrium);
+    if (D.stairs) buildStairs(D.stairs);
+    for (i = 0; i < D.rooms.length; i++) buildRoom(D.rooms[i]);
+
+    /* 补墙 / 玻璃幕墙 / 外墙 */
+    if (D.wallRuns) buildRuns(D.wallRuns);
+    if (D.glassWalls) buildGlass(D.glassWalls);
+    if (D.perimeter) buildPerimeter(D.perimeter, D.perimeterHoles);
+    if (D.fixtures) buildFixtures(D.fixtures);
+    if (D.solids) for (i = 0; i < D.solids.length; i++) {
+      var s = D.solids[i];
+      if (s.kind === 'wall') {
+        var fs = px(s.x1);
+        box(fs - 0.16, pz(s.y1), fs + 0.16, pz(s.y2), 0, H_WALL, WALL_COL);
+        addCol(fs - 0.16, pz(s.y1), fs + 0.16, pz(s.y2));
+      } else {
+        box(px(s.x1), pz(s.y1), px(s.x2), pz(s.y2), 0, 1.2, 0xa7b1bf);
+        addCol(px(s.x1), pz(s.y1), px(s.x2), pz(s.y2));
+      }
+    }
+
+    buildMinimapBG();
+    updateFloorButtons();
+  }
+
+  /* =======================================================================
+     玩家 / 碰撞
+     ======================================================================= */
+  var P = { x: 0, z: 0, yaw: 0, pitch: 0, bob: 0 };
+  var START = { x: 0, z: 0, yaw: 0 };
+
+  /* 摄像机朝向约定：yaw = 0 朝北（-z），向右（东）为正 —— 符合"上北下南"。 */
+  function dirOf(yaw) { return { x: Math.sin(yaw), z: -Math.cos(yaw) }; }
+
+  function inside(x, z) {
+    for (var i = 0; i < WALK.length; i++) {
+      var w = WALK[i];
+      if (x >= w.x1 - 0.22 && x <= w.x2 + 0.22 && z >= w.z1 - 0.22 && z <= w.z2 + 0.22) return true;
+    }
+    return false;
+  }
+  function hitWall(x, z) {
+    var r = PR;
+    for (var i = 0; i < COL.length; i++) {
+      var c = COL[i];
+      if (x > c.x1 - r && x < c.x2 + r && z > c.z1 - r && z < c.z2 + r) return true;
+    }
+    return false;
+  }
+  function free(x, z) { return inside(x, z) && !hitWall(x, z); }
+
+  /* 就近找一个能站的点（螺旋搜索，半径最多 3m） */
+  function findFree(x, z) {
+    if (free(x, z)) return { x: x, z: z };
+    for (var rad = 0.25; rad <= 3.0; rad += 0.25) {
+      for (var a = 0; a < 16; a++) {
+        var ang = a / 16 * Math.PI * 2;
+        var nx = x + Math.cos(ang) * rad, nz = z + Math.sin(ang) * rad;
+        if (free(nx, nz)) return { x: nx, z: nz };
+      }
+    }
+    return null;
+  }
+
+  /* 起点：数据里给了 startPx 就用它，然后再"往走廊中间挪一挪"。
+     板子上那个红点经常画在走廊边线/门口上，直接站在那儿会贴着墙、还被楼梯双开门挡住视线。 */
+  function startPxOf(fid) {
+    var f = FLOORS[fid];
+    var raw = (f && f.startPx && f.startPx.x !== undefined)
+      ? { x: px(f.startPx.x), z: pz(f.startPx.y) }
+      : { x: px(1150), z: pz(742) };
+    /* 找包含它（或离它最近）的走廊，取走廊的"中间那条线" */
+    var best = null, bestD = 1e9;
+    for (var i = 0; i < CORR_M.length; i++) {
+      var c = CORR_M[i];
+      var dx = Math.max(c.x1 - raw.x, 0, raw.x - c.x2);
+      var dz = Math.max(c.z1 - raw.z, 0, raw.z - c.z2);
+      var d = Math.hypot(dx, dz);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    if (!best || bestD > 6) return raw;
+    var w = best.x2 - best.x1, h = best.z2 - best.z1;
+    var cx = Math.min(Math.max(raw.x, best.x1 + 0.35), best.x2 - 0.35);
+    var cz = Math.min(Math.max(raw.z, best.z1 + 0.35), best.z2 - 0.35);
+    /* 走廊通常一头长一头窄：窄的那一边拉到正中 */
+    if (w <= h) cx = (best.x1 + best.x2) / 2;
+    else cz = (best.z1 + best.z2) / 2;
+    return { x: cx, z: cz };
+  }
+
+  function placeAt(x, z, yaw) {
+    var p = findFree(x, z);
+    if (!p) p = { x: x, z: z };
+    P.x = p.x; P.z = p.z;
+    if (yaw !== undefined) P.yaw = yaw;
+    P.pitch = 0;
+  }
+
+  /* ---------------- 楼层切换 ---------------- */
+  function setFloor(fid, keepPos) {
+    if (!FLOORS[fid]) return;
+    var old = { x: P.x, z: P.z };
+    buildFloorScene(fid);
+    if (keepPos) {
+      var p = findFree(old.x, old.z);
+      if (p) { P.x = p.x; P.z = p.z; }
+      else {
+        var s = startPxOf(fid);
+        var q = findFree(s.x, s.z) || s;
+        P.x = q.x; P.z = q.z;
+      }
+    } else {
+      var st = startPxOf(fid);
+      var q2 = findFree(st.x, st.z) || st;
+      P.x = q2.x; P.z = q2.z;
+    }
+    START.x = P.x; START.z = P.z; START.yaw = P.yaw;
+    /* 起步朝向：沿着走廊的长边走，别一睁眼就怼在墙上 */
+    if (!keepPos) P.yaw = START.yaw = corridorYaw();
+    updateHUD(true);
+  }
+
+  /* 站在走廊里时，朝走廊长边方向看；不在走廊就保持 0（朝北） */
+  function corridorYaw() {
+    var best = null, bestD = 1e9;
+    for (var i = 0; i < CORR_M.length; i++) {
+      var c = CORR_M[i];
+      var dx = Math.max(c.x1 - P.x, 0, P.x - c.x2);
+      var dz = Math.max(c.z1 - P.z, 0, P.z - c.z2);
+      var d = Math.hypot(dx, dz);
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    if (!best || bestD > 0.6) return 0;
+    var w = best.x2 - best.x1, h = best.z2 - best.z1;
+    if (h > w) {
+      /* 纵向走廊：朝北还是朝南？朝"离自己更远"的那一头 */
+      return (P.z - best.z1 > best.z2 - P.z) ? 0 : Math.PI;
+    }
+    return (P.x - best.x1 > best.x2 - P.x) ? -Math.PI / 2 : Math.PI / 2;
+  }
+
+  function goStart() {
+    placeAt(START.x, START.z, START.yaw);
+    updateHUD(true);
+  }
+
+  /* ---------------- 楼梯上下楼 ---------------- */
+  function stairRoomAt() {
+    for (var i = 0; i < ROOMS_M.length; i++) {
+      var r = ROOMS_M[i];
+      if (r.kind !== 'stair') continue;
+      if (P.x > r.x1 - 0.35 && P.x < r.x2 + 0.35 && P.z > r.z1 - 0.35 && P.z < r.z2 + 0.35) return r;
+    }
+    return null;
+  }
+  function stairTargets(id) {
+    var out = [];
+    for (var k in FLOORS) if (FLOORS.hasOwnProperty(k) && k !== FID) {
+      var rs = FLOORS[k].rooms || [];
+      for (var i = 0; i < rs.length; i++)
+        if (rs[i].id === id && rs[i].kind === 'stair') { out.push(k); break; }
+    }
+    return out;
+  }
+  function changeStair(delta) {
+    var r = stairRoomAt();
+    if (!r) return false;
+    var cands = stairTargets(r.id);
+    if (!cands.length) { flashTip('这部楼梯在别的楼层没有对应楼梯间', true); return false; }
+    var lv = LEVEL[FID];
+    var want = null, bestD = 99;
+    for (var i = 0; i < cands.length; i++) {
+      var d = LEVEL[cands[i]] - lv;
+      if (delta > 0 && d > 0 && d < bestD) { bestD = d; want = cands[i]; }
+      if (delta < 0 && d < 0 && -d < bestD) { bestD = -d; want = cands[i]; }
+    }
+    if (!want) { flashTip(delta > 0 ? '这里已经是最上面一层' : '这里已经是最下面一层', true); return false; }
+
+    var oldYaw = P.yaw;
+    buildFloorScene(want);
+    var tgt = null;
+    for (var j = 0; j < ROOMS_M.length; j++)
+      if (ROOMS_M[j].id === r.id) { tgt = ROOMS_M[j]; break; }
+    if (tgt) {
+      var c = findFree((tgt.x1 + tgt.x2) / 2, (tgt.z1 + tgt.z2) / 2) ||
+              findFree(tgt.x1 + (tgt.x2 - tgt.x1) * 0.5, tgt.z2 - 0.5);
+      if (c) { P.x = c.x; P.z = c.z; } else { P.x = (tgt.x1 + tgt.x2) / 2; P.z = (tgt.z1 + tgt.z2) / 2; }
+    }
+    P.yaw = oldYaw;
+    updateHUD(true);
+    flashTip('已到 ' + LABEL[want] + ' · ' + r.id);
+    return true;
+  }
+
+  /* ---------------- HUD ---------------- */
+  var tipTimer = 0;
+  function flashTip(msg, warn) {
+    var el = $('stairTip');
+    el.textContent = msg;
+    el.style.background = warn ? '#b4451a' : '#1a6cf5';
+    el.classList.add('show');
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(function () { el.classList.remove('show'); }, 1600);
+  }
+
+  function roomAt(x, z) {
+    var best = null;
+    for (var i = 0; i < ROOMS_M.length; i++) {
+      var r = ROOMS_M[i];
+      if (x >= r.x1 && x <= r.x2 && z >= r.z1 && z <= r.z2) {
+        if (!best || r.area < best.area) best = r;
+      }
+    }
+    if (best) return best;
+    for (var j = 0; j < CORR_M.length; j++) {
+      var c = CORR_M[j];
+      if (x >= c.x1 && x <= c.x2 && z >= c.z1 && z <= c.z2)
+        return { id: '', name: c.name || '走廊', kind: 'corridor' };
+    }
+    return null;
+  }
+
+  function updateFloorButtons() {
+    var box2 = $('floors');
+    box2.innerHTML = '';
+    for (var i = 0; i < ORDER.length; i++) {
+      (function (fid) {
+        var b = document.createElement('div');
+        b.className = 'fbtn' + (fid === FID ? ' on' : '');
+        b.textContent = LABEL[fid] || fid;
+        b.setAttribute('data-fid', fid);
+        b.onclick = function () { setFloor(fid, true); };
+        box2.appendChild(b);
+      })(ORDER[i]);
+    }
+  }
+
+  var lastRoomKey = '';
+  function updateHUD(force) {
+    var r = roomAt(P.x, P.z);
+    var nm = r ? r.name : '楼外';
+    var id = r && r.id ? r.id : (r && r.kind === 'corridor' ? '走廊 / 通道' : '');
+    var key = FID + '|' + nm + '|' + id;
+    if (force || key !== lastRoomKey) {
+      lastRoomKey = key;
+      $('roomName').textContent = nm;
+      $('roomId').textContent = id;
+    }
+    $('posLine').textContent = 'x ' + P.x.toFixed(1) + ' · z ' + P.z.toFixed(1) +
+      ' · ' + (LABEL[FID] || FID) + ' · 眼高 ' + EYE.toFixed(2) + 'm';
+
+    /* 站在楼梯间里才提示 E/Q */
+    var st = stairRoomAt();
+    var tip = $('stairTip');
+    if (st && !tip.classList.contains('show')) {
+      var can = stairTargets(st.id).length > 0;
+      if (can) tip.textContent = '按 E 上楼 · Q 下楼（' + st.id + '）';
+    }
+  }
+
+  /* =======================================================================
+     小地图
+     ======================================================================= */
+  var mm = $('mm'), mctx = mm.getContext('2d');
+  var mmBG = document.createElement('canvas');
+  var MM = { w: 230, h: 230, s: 1, ox: 0, oz: 0 };
+
+  function buildMinimapBG() {
+    var b = FLOORS[FID].bounds;
+    var x1 = px(b.x1), x2 = px(b.x2), z1 = pz(b.y1), z2 = pz(b.y2);
+    var pad = 1.2;
+    x1 -= pad; z1 -= pad; x2 += pad; z2 += pad;
+    var w = x2 - x1, h = z2 - z1;
+    var size = 460;
+    mmBG.width = size; mmBG.height = size;
+    var g = mmBG.getContext('2d');
+    g.clearRect(0, 0, size, size);
+
+    MM.s = Math.min(size / w, size / h);
+    MM.ox = x1; MM.oz = z1;
+    MM.w = size; MM.h = size;
+
+    function X(x) { return (x - x1) * MM.s; }
+    function Z(z) { return (z - z1) * MM.s; }
+
+    /* 走廊先铺 */
+    g.fillStyle = '#3a4658';
+    for (var i = 0; i < CORR_M.length; i++) {
+      var c = CORR_M[i];
+      g.fillRect(X(c.x1), Z(c.z1), (c.x2 - c.x1) * MM.s, (c.z2 - c.z1) * MM.s);
+    }
+    /* 房间 */
+    for (var j = 0; j < ROOMS_M.length; j++) {
+      var r = ROOMS_M[j];
+      g.fillStyle = MM_KIND[r.kind] || '#c9d3e0';
+      g.fillRect(X(r.x1), Z(r.z1), (r.x2 - r.x1) * MM.s, (r.z2 - r.z1) * MM.s);
+      g.strokeStyle = 'rgba(20,30,45,.55)';
+      g.lineWidth = 1;
+      g.strokeRect(X(r.x1), Z(r.z1), (r.x2 - r.x1) * MM.s, (r.z2 - r.z1) * MM.s);
+    }
+    /* 天井 */
+    if (D && D.atrium) {
+      g.fillStyle = '#111823';
+      g.fillRect(X(px(D.atrium.x1)), Z(pz(D.atrium.y1)),
+                 (px(D.atrium.x2) - px(D.atrium.x1)) * MM.s,
+                 (pz(D.atrium.y2) - pz(D.atrium.y1)) * MM.s);
+    }
+    /* 小字房间号 */
+    g.font = '600 13px "PingFang SC",system-ui,sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    for (var k = 0; k < ROOMS_M.length; k++) {
+      var rr = ROOMS_M[k];
+      var bw = (rr.x2 - rr.x1) * MM.s, bh = (rr.z2 - rr.z1) * MM.s;
+      if (bw < 26 || bh < 16 || !rr.id || rr.kind === 'stair' || rr.kind === 'toilet') continue;
+      g.fillStyle = 'rgba(30,45,64,.75)';
+      g.fillText(rr.id, X((rr.x1 + rr.x2) / 2), Z((rr.z1 + rr.z2) / 2));
+    }
+  }
+
+  function drawMinimap() {
+    var W = mm.width, H = mm.height;
+    mctx.clearRect(0, 0, W, H);
+    mctx.fillStyle = '#0f1620';
+    mctx.fillRect(0, 0, W, H);
+    if (mmBG.width) mctx.drawImage(mmBG, 0, 0, W, H);
+
+    var k = W / MM.w;
+    var cx = (P.x - MM.ox) * MM.s * k;
+    var cy = (P.z - MM.oz) * MM.s * k;
+
+    /* 视野扇形 */
+    var R = 30, half = 0.62;
+    var d = dirOf(P.yaw);
+    var ang = Math.atan2(d.x, -d.z);
+    mctx.beginPath();
+    mctx.moveTo(cx, cy);
+    mctx.arc(cx, cy, R, ang - Math.PI / 2 - half, ang - Math.PI / 2 + half);
+    mctx.closePath();
+    mctx.fillStyle = 'rgba(26,108,245,.30)';
+    mctx.fill();
+
+    /* 红点 */
+    mctx.beginPath();
+    mctx.arc(cx, cy, 4.6, 0, Math.PI * 2);
+    mctx.fillStyle = '#ff4d4f';
+    mctx.fill();
+    mctx.lineWidth = 2;
+    mctx.strokeStyle = '#fff';
+    mctx.stroke();
+  }
+
+  /* 大图：把当前层平面放大铺满（小地图本身已经是平面图，这里只做尺寸切换） */
+  $('btnMap').onclick = function () {
+    var w = $('mmWrap');
+    var isBig = w.getAttribute('data-big') === '1';
+    if (isBig) {
+      w.removeAttribute('data-big');
+      mm.width = 230; mm.height = 230;
+      mm.style.width = ''; mm.style.height = '';
+      $('btnMap').textContent = '大图';
+    } else {
+      w.setAttribute('data-big', '1');
+      mm.width = 520; mm.height = 520;
+      mm.style.width = '520px'; mm.style.height = '520px';
+      $('btnMap').textContent = '收起';
+    }
+  };
+  $('btnStart').onclick = goStart;
+
+  /* =======================================================================
+     输入
+     ======================================================================= */
+  var held = {};
+  var KEYMAP = {
+    KeyW: 'fwd', ArrowUp: 'fwd',
+    KeyS: 'back', ArrowDown: 'back',
+    KeyA: 'left', KeyD: 'right',
+    ArrowLeft: 'turnL', ArrowRight: 'turnR',
+    ShiftLeft: 'run', ShiftRight: 'run'
+  };
+
+  window.addEventListener('keydown', function (ev) {
+    var code = ev.code || ev.key;
+    if (code === 'KeyE') { changeStair(1); ev.preventDefault(); return; }
+    if (code === 'KeyQ') { changeStair(-1); ev.preventDefault(); return; }
+    if (code === 'KeyR') { goStart(); return; }
+    if (code === 'KeyF') { $('btnMap').onclick(); return; }
+    var a = KEYMAP[code];
+    if (a) { held[a] = true; ev.preventDefault(); }
+  });
+  window.addEventListener('keyup', function (ev) {
+    var a = KEYMAP[ev.code || ev.key];
+    if (a) held[a] = false;
+  });
+  window.addEventListener('blur', function () { held = {}; });
+
+  /* 鼠标拖拽转头 */
+  var drag = null;
+  canvas.addEventListener('mousedown', function (ev) {
+    drag = { x: ev.clientX, y: ev.clientY, sx: ev.clientX, sy: ev.clientY };
+    canvas.classList.add('drag');
+  });
+  window.addEventListener('mouseup', function () {
+    if (drag) {
+      /* 拖拽结束：如果几乎没动，就当"点了一下"，方便以后接点击交互 */
+    }
+    drag = null;
+    canvas.classList.remove('drag');
+  });
+  window.addEventListener('mousemove', function (ev) {
+    if (!drag) return;
+    var dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+    drag.x = ev.clientX; drag.y = ev.clientY;
+    P.yaw += dx * 0.0032;
+    P.pitch -= dy * 0.0028;
+    clampPitch();
+  });
+  /* 触屏：单指拖动转头 */
+  var touch = null;
+  canvas.addEventListener('touchstart', function (ev) {
+    if (ev.touches.length === 1) {
+      touch = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+      ev.preventDefault();
+    }
+  }, { passive: false });
+  canvas.addEventListener('touchmove', function (ev) {
+    if (!touch || ev.touches.length !== 1) return;
+    var t = ev.touches[0];
+    P.yaw += (t.clientX - touch.x) * 0.0036;
+    P.pitch -= (t.clientY - touch.y) * 0.0030;
+    touch = { x: t.clientX, y: t.clientY };
+    clampPitch();
+    ev.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('touchend', function () { touch = null; });
+
+  function clampPitch() {
+    var lim = Math.PI / 2 - 0.08;
+    if (P.pitch > lim) P.pitch = lim;
+    if (P.pitch < -lim) P.pitch = -lim;
+  }
+
+  /* ---------------- 视角：滚轮调 FOV ---------------- */
+  canvas.addEventListener('wheel', function (ev) {
+    camera.fov = Math.max(50, Math.min(90, camera.fov + (ev.deltaY > 0 ? 2 : -2)));
+    camera.updateProjectionMatrix();
+    ev.preventDefault();
+  }, { passive: false });
+
+  /* =======================================================================
+     主循环
+     ======================================================================= */
+  var SPEED = 1.55, RUN = 3.15, TURN = 1.85;
+  var lastT = 0;
+
+  function step(dt) {
+    /* 转视角 */
+    if (held.turnL) P.yaw -= TURN * dt;
+    if (held.turnR) P.yaw += TURN * dt;
+
+    var f = (held.fwd ? 1 : 0) - (held.back ? 1 : 0);
+    var s = (held.right ? 1 : 0) - (held.left ? 1 : 0);
+    var moving = (f !== 0 || s !== 0);
+
+    if (moving) {
+      var sp = (held.run ? RUN : SPEED) * dt;
+      var d = dirOf(P.yaw);
+      var fx = d.x, fz = d.z;
+      var rx = -d.z, rz = d.x;        // 右手方向
+      var vx = fx * f + rx * s, vz = fz * f + rz * s;
+      var len = Math.hypot(vx, vz) || 1;
+      vx = vx / len * sp; vz = vz / len * sp;
+
+      /* 分轴滑动：撞墙时沿墙溜过去，而不是被粘住 */
+      var nx = P.x + vx;
+      if (free(nx, P.z)) P.x = nx;
+      var nz = P.z + vz;
+      if (free(P.x, nz)) P.z = nz;
+
+      P.bob += dt * (held.run ? 13 : 9.5);
+    } else {
+      P.bob += dt * 2.0;
+    }
+  }
+
+  function updateCamera() {
+    var bobY = Math.sin(P.bob) * (movingNow ? 0.022 : 0.006);
+    camera.position.set(P.x, EYE + bobY, P.z);
+    var d = dirOf(P.yaw);
+    var cp = Math.cos(P.pitch);
+    camera.lookAt(P.x + d.x * cp, EYE + bobY + Math.sin(P.pitch), P.z + d.z * cp);
+  }
+  var movingNow = false;
+
+  var hudClock = 0;
+  function loop(t) {
+    requestAnimationFrame(loop);
+    if (!lastT) lastT = t;
+    var dt = Math.min((t - lastT) / 1000, 0.06);
+    lastT = t;
+
+    var before = { x: P.x, z: P.z };
+    step(dt);
+    movingNow = Math.abs(P.x - before.x) + Math.abs(P.z - before.z) > 1e-4;
+
+    updateCamera();
+    renderer.render(scene, camera);
+    drawMinimap();
+
+    hudClock += dt;
+    if (hudClock > 0.15) { hudClock = 0; updateHUD(false); }
+  }
+
+  function resize() {
+    var w = window.innerWidth, h = window.innerHeight;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+
+  /* =======================================================================
+     启动
+     ======================================================================= */
+  var qf = null;
+  try {
+    var m = /[?&]floor=(B2-[0-9])/.exec(location.search);
+    if (m && FLOORS[m[1]]) qf = m[1];
+  } catch (e) { }
+  var first = qf || (FLOORS['B2-4'] ? 'B2-4' : ORDER[0]);
+
+  FID = first;
+  buildFloorScene(first);
+  var st0 = startPxOf(first);
+  var p0 = findFree(st0.x, st0.z) || st0;
+  P.x = p0.x; P.z = p0.z; P.pitch = 0;
+  P.yaw = corridorYaw();
+  START.x = P.x; START.z = P.z; START.yaw = P.yaw;
+  updateHUD(true);
+
+  $('load').classList.add('hide');
+  setTimeout(function () { $('load').style.display = 'none'; }, 400);
+
+  requestAnimationFrame(loop);
+
+  /* 自检/调试入口（无头测试用） */
+  window.__WALK__ = {
+    floors: FLOORS, order: ORDER,
+    get state() {
+      return { fid: FID, x: P.x, z: P.z, yaw: P.yaw, pitch: P.pitch,
+               room: (roomAt(P.x, P.z) || {}).name || '', eye: EYE,
+               colliders: COL.length, walkRects: WALK.length, rooms: ROOMS_M.length };
+    },
+    setFloor: setFloor,
+    teleport: function (x, z, yaw) { placeAt(x, z, yaw); updateHUD(true); return { x: P.x, z: P.z }; },
+    free: free,
+    roomAt: roomAt,
+    step: function (action, dt) {
+      var save = held;
+      held = { fwd: !!action.fwd, back: !!action.back, left: !!action.left,
+               right: !!action.right, turnL: !!action.turnL, turnR: !!action.turnR,
+               run: !!action.run };
+      step(dt || 0.05);
+      held = save;
+      return { x: P.x, z: P.z, yaw: P.yaw };
+    },
+    stair: changeStair,
+    /* 某点被哪些碰撞盒挡住（调试用） */
+    blockers: function (x, z) {
+      var r = PR, out = [];
+      for (var i = 0; i < COL.length; i++) {
+        var c = COL[i];
+        if (x > c.x1 - r && x < c.x2 + r && z > c.z1 - r && z < c.z2 + r)
+          out.push({ x1: +c.x1.toFixed(2), z1: +c.z1.toFixed(2), x2: +c.x2.toFixed(2), z2: +c.z2.toFixed(2) });
+      }
+      return out;
+    },
+    /* 全层连通性体检：从起点出发，所有走廊/房间必须走到。
+       栅格取 0.2m —— 门洞净宽只有 ~0.5m，用 0.5m 栅格会把窄口整个漏掉。 */
+    audit: function () {
+      var out = { fid: FID, unreachable: [], total: 0, cells: 0 };
+      var seen = {}, queue = [{ x: P.x, z: P.z }];
+      var GRID = 0.2;
+      function key(x, z) { return Math.round(x / GRID) + ',' + Math.round(z / GRID); }
+      seen[key(P.x, P.z)] = 1;
+      var guard = 0;
+      while (queue.length && guard++ < 900000) {
+        var c = queue.pop();
+        var nb = [[GRID, 0], [-GRID, 0], [0, GRID], [0, -GRID]];
+        for (var i = 0; i < 4; i++) {
+          var nx = c.x + nb[i][0], nz = c.z + nb[i][1];
+          var kk = key(nx, nz);
+          if (seen[kk]) continue;
+          if (!free(nx, nz)) continue;
+          seen[kk] = 1;
+          queue.push({ x: nx, z: nz });
+        }
+      }
+      out.cells = guard;
+      for (var j = 0; j < ROOMS_M.length; j++) {
+        var r = ROOMS_M[j];
+        out.total++;
+        var ok = false;
+        for (var a = 0; a <= 6 && !ok; a++) {
+          for (var b = 0; b <= 6 && !ok; b++) {
+            var tx = r.x1 + 0.15 + (r.x2 - r.x1 - 0.3) * a / 6;
+            var tz = r.z1 + 0.15 + (r.z2 - r.z1 - 0.3) * b / 6;
+            if (seen[key(tx, tz)]) ok = true;
+          }
+        }
+        if (!ok) out.unreachable.push(r.id + ' ' + r.name);
+      }
+      return out;
+    }
+  };
+})();
+</script>
+</body>
+</html>

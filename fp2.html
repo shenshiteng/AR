@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>两层第一人称地图探索（走楼梯跨层）</title>
+<style>
+  :root{ --bg:#0f1419; --panel:#171d26; --line:#2a3340; --txt:#e6ebf2; --dim:#8b98a8; --acc:#38bdf8; }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:var(--bg); color:var(--txt);
+    font:14px/1.5 system-ui,-apple-system,"Segoe UI","PingFang SC",sans-serif; overflow:hidden; }
+  #app{ display:flex; flex-direction:column; height:100%; }
+  header{ display:flex; align-items:center; gap:12px; padding:8px 14px;
+    border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap; }
+  header h1{ font-size:14px; margin:0; font-weight:600; }
+  .hud{ display:flex; gap:14px; flex-wrap:wrap; font:12px/1.5 ui-monospace,Menlo,Consolas,monospace; color:var(--dim); }
+  .hud b{ color:var(--txt); font-weight:600; }
+  .spacer{ flex:1; }
+  button{ background:#1d2834; color:var(--txt); border:1px solid var(--line); border-radius:6px;
+    padding:5px 10px; font-size:12px; cursor:pointer; }
+  button:hover{ border-color:var(--acc); }
+  button.on{ background:var(--acc); color:#04121f; border-color:var(--acc); }
+  #destInput{ background:#0f1419; border:1px solid var(--line); border-radius:6px; color:var(--txt);
+    padding:5px 10px; font-size:12px; width:190px; outline:none; }
+  #destInput:focus{ border-color:var(--acc); }
+  #destInput::placeholder{ color:var(--dim); }
+  select{ background:#1d2834; color:var(--txt); border:1px solid var(--line); border-radius:6px;
+    padding:5px 8px; font-size:12px; cursor:pointer; max-width:170px; }
+  select:hover{ border-color:var(--acc); }
+  main{ flex:1; display:flex; min-height:0; }
+  #fpWrap{ flex:3; position:relative; min-width:0; }
+  #fpWrap canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  #ovWrap{ flex:2; position:relative; min-width:0; border-left:1px solid var(--line); background:#0a0e13; }
+  #ovWrap canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .ov-label{ position:absolute; top:8px; left:10px; font-size:11px; color:var(--dim); pointer-events:none; }
+  .fp-tip{ position:absolute; left:10px; bottom:10px; font-size:12px; color:var(--dim);
+    background:rgba(15,20,25,.7); padding:4px 8px; border-radius:6px; pointer-events:none; }
+  footer{ display:flex; gap:12px; align-items:center; padding:8px 14px; border-top:1px solid var(--line);
+    background:var(--panel); flex-wrap:wrap; }
+  footer .keys{ color:var(--dim); font-size:12px; }
+  footer kbd{ background:#1d2834; border:1px solid var(--line); border-bottom-width:2px; border-radius:4px;
+    padding:1px 6px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px; color:var(--txt); }
+  #report{ max-height:40vh; overflow:auto; }
+  #report div{ padding:3px 0; font-size:12px; border-bottom:1px dashed var(--line); }
+  #report .pass{ color:#4ade80; }
+  #report .fail{ color:#f87171; }
+  #report .warn{ color:#fbbf24; }
+  .hidden{ display:none !important; }
+  #crosshair{ position:absolute; left:50%; top:50%; width:10px; height:10px; margin:-5px; pointer-events:none; }
+  #crosshair::before,#crosshair::after{ content:''; position:absolute; background:rgba(255,255,255,.55); }
+  #crosshair::before{ left:4px; top:0; width:2px; height:10px; }
+  #crosshair::after{ top:4px; left:0; height:2px; width:10px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>两层第一人称探索 · 走楼梯跨层</h1>
+    <select id="floorSel" title="切换楼层"></select>
+    <div class="hud">
+      <span>位置 <b id="hudPos">—</b></span>
+      <span>朝向 <b id="hudTheta">—</b></span>
+      <span>最近路点 <b id="hudNode">—</b></span>
+      <span>墙 <b id="hudWall">—</b></span>
+    </div>
+    <div class="spacer"></div>
+    <select id="stairSel" title="快速定位到楼梯口（作为起点）">
+      <option value="">楼梯口定位…</option>
+    </select>
+    <input id="destInput" type="text" list="destList" placeholder="搜房间/编号（跨层），回车巡航" autocomplete="off">
+    <datalist id="destList"></datalist>
+    <button id="btnGo" type="button">巡航</button>
+    <button id="btnNoclip" type="button">穿墙模式</button>
+    <button id="btnSelfTest" type="button">自检</button>
+  </header>
+
+  <main>
+    <div id="fpWrap"><div id="crosshair"></div><div class="fp-tip" id="fpTip"></div></div>
+    <div id="ovWrap"><canvas id="ovCanvas"></canvas><div class="ov-label">俯视总览 · 固定视角 · 黄=已清理的墙 · 蓝点=楼梯口</div></div>
+  </main>
+
+  <footer>
+    <span class="keys">
+      <kbd>W</kbd><kbd>S</kbd> 前进/后退　
+      <kbd>A</kbd><kbd>D</kbd> 左右转视角　
+      <kbd>←</kbd><kbd>→</kbd> 转身　
+      走进楼梯间走到头自动上下楼　
+      <kbd>N</kbd> 穿墙模式
+    </span>
+    <span class="keys" id="spawnNote"></span>
+    <div class="spacer"></div>
+    <div id="report" class="hidden"></div>
+  </footer>
+</div>
+
+<script src="js/vendor/three.min.js"></script>
+<script src="data/labs.js?v=11"></script>
+<script src="data/B2-2F_grid.js?v=11"></script>
+<script src="data/B2-3F_grid.js?v=11"></script>
+<script src="js/fp-core.js?v=12"></script>
+<script src="js/fp-view.js?v=12"></script>
+<script src="js/fp-input.js?v=12"></script>
+<script src="js/fp-validate.js?v=12"></script>
+<script src="js/router.js?v=12"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ---------- 数据与错误提示 ---------- */
+  function fail(msg) {
+    document.body.innerHTML = '<div style="padding:20px;font:14px/1.6 monospace;color:#f87171">' + msg + '</div>';
+    throw new Error(msg);
+  }
+  if (!window.THREE) fail('three.js 未加载（js/vendor/three.min.js 缺失）');
+  if (!window.LAB_DATA) fail('data/labs.js 未加载或格式错误');
+
+  var D = window.LAB_DATA;
+  if (!D.floors || !D.floors.length) fail('LAB_DATA.floors 为空');
+
+  /* ---------- 只保留两层：B2-2（2层）与 B2-3（3层） ---------- */
+  var FLOOR_IDS = ['B2-2', 'B2-3'];
+  function floorById(fid) {
+    var r = null;
+    D.floors.forEach(function (x) { if (x.id === fid) r = x; });
+    return r;
+  }
+
+  /* ---------- 各楼层的墙资产映射 ---------- */
+  var GRIDS = {
+    'B2-2': { grid: window.FLOOR_B2_2, walls: window.FLOOR_B2_2_WALLS || [], removed: window.FLOOR_B2_2_REMOVED || [] },
+    'B2-3': { grid: window.FLOOR_B2_3, walls: window.FLOOR_B2_3_WALLS || [], removed: window.FLOOR_B2_3_REMOVED || [] }
+  };
+  function gridOf(fid) { return GRIDS[fid] || null; }
+
+  var G = window.LabRouter.buildGraph(D);   // 全楼层路网图（楼梯=跨层边，由 links 决定）
+  var LABS = D.labs || [];
+  var LINKS = D.links || [];
+
+  function floorName(fid) {
+    var f = floorById(fid);
+    return f ? f.name : fid;
+  }
+
+  /* ---------- 楼梯口 ↔ 跨层边的对应：某层楼梯口节点 → 相连的另一层节点 ---------- */
+  // 建一张「楼梯口节点 → 所有跨层邻接」的映射，用于手动上/下楼
+  var stairNeighbors = {};   // nodeId -> [{to, name}]
+  function buildStairMap() {
+    stairNeighbors = {};
+    LINKS.forEach(function (l) {
+      var a = l.from, b = l.to;
+      (stairNeighbors[a] = stairNeighbors[a] || []).push({ to: b, name: l.name, meters: l.meters });
+      (stairNeighbors[b] = stairNeighbors[b] || []).push({ to: a, name: l.name, meters: l.meters });
+    });
+  }
+  buildStairMap();
+
+  /* 站在楼梯口该看的方向：指向最近楼梯间的「门口中点」（门洞所在侧），
+     让人一睁眼正对门洞、能直接走进去上楼 */
+  function stairFacing(fid, nodeId) {
+    var f = floorById(fid);
+    var n = null;
+    (f.nodes || []).forEach(function (x) { if (x.id === nodeId) n = x; });
+    if (!n) return 90;
+    var best = null, bd = Infinity;
+    (f.rooms || []).forEach(function (r) {
+      if (r.kind !== 'stair') return;
+      var cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      var d = Math.hypot(cx - n.x, cy - n.y);
+      if (d < bd) { bd = d; best = r; }
+    });
+    if (!best) return 90;
+    // 门洞在哪条边：由离房间中心最近的路点（走廊节点）落在房间哪侧决定
+    var door = null, dd = Infinity;
+    var rcx = best.x + best.w / 2, rcy = best.y + best.h / 2;
+    (f.nodes || []).forEach(function (m) {
+      var d2 = Math.hypot(m.x - rcx, m.y - rcy);
+      if (d2 < dd) { dd = d2; door = m; }
+    });
+    var doorX = rcx, doorY = rcy;
+    if (door) {
+      var dxL = door.x - best.x, dxR = door.x - (best.x + best.w);
+      var dyT = door.y - best.y, dyB = door.y - (best.y + best.h);
+      if (dxL < 0) { doorX = best.x; doorY = rcy; }              // 门在西侧
+      else if (dxR > 0) { doorX = best.x + best.w; doorY = rcy; } // 门在东侧
+      else if (dyT < 0) { doorX = rcx; doorY = best.y; }          // 门在北侧
+      else if (dyB > 0) { doorX = rcx; doorY = best.y + best.h; } // 门在南侧
+    }
+    return Math.atan2(doorY - n.y, doorX - n.x) * 180 / Math.PI;
+  }
+
+  /* ---------- 可重绑的当前层状态 ---------- */
+  var floor = null, world = null, fp = null, ov = null, player = null;
+  var walkTrail = [];
+  var autoNodes = null, autoI = 0, autoDone = false, autoLab = null;
+  /* 巡航爬楼梯子状态：null=正常巡航；否则是「真实走楼梯跨层」进行中
+     { targetFloor, entryNode } —— entryNode 是本层楼梯口节点 id（跨层边起点） */
+  var climb = null;
+  var overviews = {};   // fid -> 预建好的俯视总览对象，切层直接换引用，避免跨层瞬间重绘整张静态图（掉帧根源）
+
+  /* ---------- 叠层世界：一次建好两层（二楼 baseY=0，三楼 baseY=3米），
+       三层架在二层正上方，楼板在楼梯间位置开洞 —— 真正的「房子」 ---------- */
+  var BASE = { 'B2-2': 0, 'B2-3': 3.0 };   // 各层地面绝对高度（米）
+  var worlds = {};                          // fid -> FPWorld
+  function buildWorld(fid) {
+    var f = floorById(fid);
+    var stairSign = (fid === 'B2-2') ? 1 : -1;
+    /* 楼梯间门口在哪一侧，必须以「跨层边上的楼梯口节点」为准。
+       fp-core 默认取离房间中心最近的路点，遇到东南/西南这种门在正南、
+       但斜上方也有走廊节点的楼梯间会判错边（把门当成开在侧面），
+       结果一走进楼梯间就被判定为「已到平台」。 */
+    var stairDoors = (f.nodes || []).filter(function (n) {
+      return stairNeighbors[n.id] && String(n.id).split('/')[0] === fid;
+    });
+    return window.FPWorld.create({
+      grid: gridOf(fid).grid,
+      rooms: f.rooms || [],
+      nodes: f.nodes || [],
+      edges: f.edges || [],
+      walls: gridOf(fid).walls,
+      stairSign: stairSign,
+      stairDoors: stairDoors
+    });
+  }
+  FLOOR_IDS.forEach(function (fid) { worlds[fid] = buildWorld(fid); });
+
+  /* 预建某层的俯视总览（静态图只画一次）。切层时直接换引用，不重建 → 消除跨层掉帧 */
+  function buildOverview(fid) {
+    var stairIds = [];
+    Object.keys(stairNeighbors).forEach(function (sid) {
+      if (String(sid).split('/')[0] === fid) stairIds.push(sid);
+    });
+    return window.FPView.initOverview($('ovCanvas'), worlds[fid], gridOf(fid).removed, stairIds);
+  }
+
+  /* 切到某层：只改「当前层引用 + 玩家绝对高度」，不重建 3D 场景 */
+  function switchFloor(fid, spawnNodeId, facingDeg, silent) {
+    if (!worlds[fid]) { $('spawnNote').textContent = '该楼层没有墙数据：' + fid; return false; }
+    floor = floorById(fid);
+    world = worlds[fid];
+
+    /* 出生点：spawnNodeId 优先，否则该层第一个定位点，否则第一个节点 */
+    var nodeId = spawnNodeId || null;
+    if (!nodeId) {
+      var loc = null;
+      (D.locations || []).forEach(function (l) { if (!loc && l.floor === fid) loc = l; });
+      nodeId = loc ? loc.node : (floor.nodes && floor.nodes[0] && floor.nodes[0].id);
+    }
+    /* 出生朝向：楼梯口节点默认面向楼梯间，其余默认 90（南） */
+    var effFacing = facingDeg;
+    if (effFacing === undefined && stairNeighbors[nodeId]) effFacing = stairFacing(fid, nodeId);
+    player = world.spawnAtNode(nodeId, effFacing === undefined ? 90 : effFacing) ||
+      { x: world.width / 2, y: world.height / 2, theta: 0 };
+    player.floorId = fid;
+    player.baseY = BASE[fid] || 0;
+    player.z = 0;
+    stairArmed = true;   // 出生/切层重新武装，走到楼梯间即可触发
+    walkTrail = [{ x: player.x, y: player.y }];
+
+    /* 俯视总览直接换到预建好的引用（首次访问才构建） */
+    if (!overviews[fid]) overviews[fid] = buildOverview(fid);
+    ov = overviews[fid];
+
+    $('floorSel').value = fid;
+    if (!silent) $('spawnNote').textContent = '已到 ' + floorName(fid) + ' · 位置 ' + nodeId;
+    onResize();
+    return true;
+  }
+
+  /* ---------- 手动上/下楼：玩家靠近某楼梯口时触发，跳到相连的另一层楼梯口 ---------- */
+  function tryUseStair() {
+    var near = nearestNode(player.x, player.y);
+    if (!near) { $('spawnNote').textContent = '附近没有路点'; return false; }
+    var nbs = stairNeighbors[near.id];
+    if (!nbs || !nbs.length) { $('spawnNote').textContent = '这里不是楼梯口，无法上/下楼'; return false; }
+    var nb = nbs[0];
+    var toFloor = String(nb.to).split('/')[0];
+    var facing = stairFacing(toFloor, nb.to);   // 到达后面向楼梯，能看见刚走过的台阶
+    autoNodes = null; autoDone = false;
+    switchFloor(toFloor, nb.to, facing, false);
+    $('spawnNote').textContent = '走楼梯（' + (nb.name || '楼梯') + '）到 ' + floorName(toFloor) + ' · 已到 ' + nb.to;
+    return true;
+  }
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'KeyE') { tryUseStair(); e.preventDefault(); }
+  });
+
+  /* ---------- 跨楼层搜索 ---------- */
+  function findLab(text) {
+    var ql = String(text || '').trim().toLowerCase();
+    if (!ql) return null;
+    var hit = null;
+    LABS.forEach(function (l) {
+      if (hit) return;
+      if (l.floor !== 'B2-2' && l.floor !== 'B2-3') return;
+      if (String(l.room).toLowerCase() === ql || String(l.id).toLowerCase() === ql ||
+          (l.name || '').toLowerCase().indexOf(ql) > -1) hit = l;
+    });
+    if (!hit) {
+      LABS.forEach(function (l) {
+        if (hit) return;
+        if (l.floor !== 'B2-2' && l.floor !== 'B2-3') return;
+        if (String(l.room).indexOf(ql) > -1) hit = l;
+      });
+    }
+    return hit;
+  }
+
+  /* ---------- 自动巡航：支持跨层（走楼梯真实切换） ---------- */
+  function startAuto(destText) {
+    var hit = findLab(destText);
+    if (!hit) { $('spawnNote').textContent = '找不到目的地：' + destText; return false; }
+    var startId = window.LabRouter.nearestNode(G, floor.id, player.x, player.y);
+    if (!startId) { $('spawnNote').textContent = '当前位置不在路网附近，无法巡航'; return false; }
+    var r = window.LabRouter.routeToLab(G, startId, hit, null);
+    if (!r) { $('spawnNote').textContent = '目的地未连通：' + hit.name; return false; }
+    autoLab = hit;
+    autoNodes = r.nodes;
+    autoI = 1;
+    autoDone = false;
+    player = { x: G.nodes[r.nodes[0]].x, y: G.nodes[r.nodes[0]].y, theta: 0, floorId: floor.id, baseY: BASE[floor.id] || 0, z: 0 };
+    walkTrail = [{ x: player.x, y: player.y }];
+    var cross = '';
+    for (var i = 0; i + 1 < autoNodes.length; i++) {
+      if (G.nodes[autoNodes[i]].floor !== G.nodes[autoNodes[i + 1]].floor) {
+        cross = '（含走楼梯跨层）';
+        break;
+      }
+    }
+    $('spawnNote').textContent = '自动巡航 → ' + hit.name + '（' + floorName(hit.floor) + ' ' + hit.room + '）' + cross;
+    if (r.nodes.length < 2) {
+      autoDone = true;
+      $('spawnNote').textContent = '已到达 ' + hit.name + '（' + floorName(hit.floor) + ' ' + hit.room + '）门口';
+    }
+    return true;
+  }
+
+  /* ---------- 输入栏 ---------- */
+  $('destInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') startAuto($('destInput').value);
+  });
+  $('btnGo').onclick = function () { startAuto($('destInput').value); };
+
+  var params = new URLSearchParams(location.search);
+
+  /* ---------- 楼层下拉 ---------- */
+  (function fillFloors() {
+    var sel = $('floorSel');
+    FLOOR_IDS.forEach(function (fid) {
+      if (!gridOf(fid)) return;
+      var f = floorById(fid);
+      var o = document.createElement('option');
+      o.value = fid;
+      o.textContent = '楼层：' + f.name;
+      sel.appendChild(o);
+    });
+    sel.onchange = function () { if (this.value) switchFloor(this.value, null, 90, false); };
+  })();
+
+  /* ---------- 楼梯口定位 ---------- */
+  (function fillStairs() {
+    var sel = $('stairSel');
+    LABS.forEach(function (l) {
+      if (l.floor !== 'B2-2' && l.floor !== 'B2-3') return;
+      if (!l.tags || l.tags.indexOf('楼梯间') < 0 || !l.door) return;
+      var o = document.createElement('option');
+      o.value = l.door + '|' + l.floor;
+      o.textContent = floorName(l.floor) + ' · ' + l.name;
+      sel.appendChild(o);
+    });
+    sel.onchange = function () {
+      if (!this.value) return;
+      var parts = this.value.split('|');
+      var face = stairFacing(parts[1], parts[0]);   // 面向楼梯间，出生即见台阶
+      if (parts[1] !== floor.id) switchFloor(parts[1], parts[0], face, true);
+      var s = world.spawnAtNode(parts[0], face);
+      if (!s) return;
+      s.floorId = floor.id; s.baseY = BASE[floor.id] || 0; s.z = 0;
+      player = s;
+      walkTrail = [{ x: player.x, y: player.y }];
+      autoNodes = null; autoDone = false;
+      $('spawnNote').textContent = '已定位到楼梯口：' + this.options[this.selectedIndex].text + '（走进楼梯间走到头即上下楼，或输入目的地巡航）';
+    };
+  })();
+
+  /* ---------- 搜索补全候选 ---------- */
+  (function fillDatalist() {
+    var dl = $('destList');
+    LABS.forEach(function (l) {
+      if (l.floor !== 'B2-2' && l.floor !== 'B2-3') return;
+      var o = document.createElement('option');
+      o.value = String(l.room);
+      o.label = l.name + '（' + floorName(l.floor) + '）';
+      dl.appendChild(o);
+    });
+  })();
+
+  /* ---------- 输入 ---------- */
+  var action = {};
+  window.FPInput.attach(window, action);
+
+  var noclip = false;
+  $('btnNoclip').onclick = function () {
+    noclip = !noclip;
+    this.classList.toggle('on', noclip);
+    $('hudWall').textContent = noclip ? '穿墙中' : (world.isWallPx(player.x, player.y) ? '在墙内' : '空');
+  };
+  window.addEventListener('keydown', function (e) {
+    if (e.code === 'KeyN') $('btnNoclip').click();
+  });
+
+  /* ---------- HUD ---------- */
+  function nearestNode(x, y) {
+    var best = null, bd = Infinity;
+    (world.nodes || []).forEach(function (n) {
+      var d = Math.hypot(n.x - x, n.y - y);
+      if (d < bd) { bd = d; best = n; }
+    });
+    return best;
+  }
+  function updateHud() {
+    $('hudPos').textContent = Math.round(player.x) + ', ' + Math.round(player.y);
+    $('hudTheta').textContent = Math.round(player.theta) + '°';
+    var n = nearestNode(player.x, player.y);
+    $('hudNode').textContent = n ? (n.id + (n.note ? ' · ' + n.note : '')) : '—';
+    if (!noclip) $('hudWall').textContent = world.isWallPx(player.x, player.y) ? '在墙内' : '空';
+
+    /* 楼梯提示文字已按用户要求去掉：不再在画面上显示任何提示 */
+  }
+
+  /* ---------- 自检 ---------- */
+  $('btnSelfTest').onclick = function () {
+    var r = window.FPValidate.run(world);
+    var box = $('report');
+    box.classList.remove('hidden');
+    box.innerHTML = '';
+    r.forEach(function (it) {
+      var d = document.createElement('div');
+      d.className = it.pass ? 'pass' : 'fail';
+      d.textContent = (it.pass ? '✓ ' : '✗ ') + it.name + ' —— ' + it.detail;
+      box.appendChild(d);
+    });
+    /* 附加：楼梯连接检查 */
+    var d2 = document.createElement('div');
+    var linksOk = LINKS.length > 0;
+    d2.className = linksOk ? 'pass' : 'fail';
+    d2.textContent = (linksOk ? '✓ ' : '✗ ') + '楼梯跨层连接 —— ' + LINKS.length + ' 条楼梯边，连通 2层↔3层';
+    box.appendChild(d2);
+  };
+  if (/[?&]selftest=1/.test(location.search)) $('btnSelfTest').click();
+
+  /* ---------- 主循环 ---------- */
+  var last = performance.now();
+  var stairArmed = true;       // 跨层「武装」状态：触发过一次后必须走出楼梯间才能再次触发（防上楼瞬间弹回下楼）
+  var stairTurn = null;        // 平台转弯进行中的状态 { target, shifted }
+  var stairManualOverride = false;   // 本次平台已被玩家手动接管 → 自动转弯不再介入
+
+  /* 找玩家当前所在的楼梯间（不在则返回 null） */
+  function stairAt(x, y) {
+    for (var i = 0; i < world.stairs.length; i++) {
+      var st = world.stairs[i];
+      if (x >= st.x && y >= st.y && x <= st.x + st.w && y <= st.y + st.h) return st;
+    }
+    return null;
+  }
+
+  /* 沿坡向进度 t：0=门端平地末端，1=远端墙边。
+     直接调用 fp-core 的 world.stairT —— 高度场、3D 台阶、这里的转弯判定
+     必须用同一套参数化，各算一份就会出现「以为到平台了其实还在坡上」。 */
+  function stairT(st, x, y) {
+    return world.stairT(st, x, y);
+  }
+
+  /* 楼梯两端坐标：门端（本跑起点）/ 远端（休息平台那侧） */
+  function stairEnds(s) {
+    if (s.axis === 'x') {
+      return {
+        axis: 'x',
+        doorX: s.dir > 0 ? s.x : (s.x + s.w),
+        farX: s.dir > 0 ? (s.x + s.w) : s.x,
+        y: s.y + s.h / 2
+      };
+    }
+    return {
+      axis: 'y',
+      doorY: s.dir > 0 ? s.y : (s.y + s.h),
+      farY: s.dir > 0 ? (s.y + s.h) : s.y,
+      x: s.x + s.w / 2
+    };
+  }
+
+  /* 找最近的楼梯间 */
+  function nearestStair(x, y) {
+    var best = null, bd = Infinity;
+    for (var i = 0; i < world.stairs.length; i++) {
+      var st = world.stairs[i];
+      var cx = st.x + st.w / 2, cy = st.y + st.h / 2;
+      var d = Math.hypot(cx - x, cy - y);
+      if (d < bd) { bd = d; best = st; }
+    }
+    return best;
+  }
+
+  /* 某一跑的横向中心线：first=false → 第一跑，first=true → 第二跑（折返跑）。
+     上行（stairSign>0）第一跑在 across 小侧、第二跑在大侧；下行反过来。
+     必须夹住贴墙余量：楼梯间只有 60~70px 宽时，0.75 位置距墙不足玩家半径(12px)，
+     换到那一跑会直接卡进墙里（相机贴着墙、两个方向都动不了）。 */
+  var LANE_MARGIN = 24;   // 距楼梯间外框的最小距离（含墙厚 8px + 玩家半径 12px + 余量）
+  function laneMidOf(st, second) {
+    var aMin = st.axis === 'x' ? st.y : st.x;
+    var aSize = st.axis === 'x' ? st.h : st.w;
+    var up = world.stairSign > 0;
+    var frac = second ? (up ? 0.75 : 0.25) : (up ? 0.25 : 0.75);
+    var v = aMin + aSize * frac;
+    var lo = aMin + LANE_MARGIN, hi = aMin + aSize - LANE_MARGIN;
+    if (hi < lo) { lo = hi = (aMin + aSize / 2); }   // 极窄楼梯：直接走中间
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  /* 楼梯的门节点（= 走出/走进楼梯间的那个路网节点）。
+     第二跑要正对它走，才能顺着门洞出去；用几何墙中点会撞在门旁边的墙上。
+     优先取「跨层边上的楼梯口节点」——那才是这个楼梯间的门；
+     不能只取「离房间中心最近的路点」，斜上方的走廊节点常常更近（会走反方向）。 */
+  function stairDoorPoint(st) {
+    var cx = st.x + st.w / 2, cy = st.y + st.h / 2;
+    var best = null, bd = Infinity;
+    Object.keys(stairNeighbors).forEach(function (sid) {
+      if (String(sid).split('/')[0] !== floor.id) return;
+      var n = world.getNode(sid);
+      if (!n) return;
+      var d = Math.hypot(n.x - cx, n.y - cy);
+      if (d < bd) { bd = d; best = n; }
+    });
+    if (best) return best;
+    // 兜底：离楼梯间最近的外部路点
+    for (var i = 0; i < world.nodes.length; i++) {
+      var n2 = world.nodes[i];
+      if (n2.x > st.x && n2.y > st.y && n2.x < st.x + st.w && n2.y < st.y + st.h) continue;
+      var d2 = Math.hypot(n2.x - cx, n2.y - cy);
+      if (d2 < bd) { bd = d2; best = n2; }
+    }
+    return best;
+  }
+
+  /* 平台转弯 + 换跑道（自动辅助，不是接管）。
+     respectInput=true（手动模式）：玩家只要按了转身/平移，就立刻把控制权交还，
+     并且本次平台不再自动接管（stairManualOverride），避免「自己转好了又被转回去」。
+     respectInput=false（自动巡航）：全程接管，不理会键盘。
+     返回 true = 本帧用于转弯/横移，不前进。
+     —— 真实双跑楼梯：第一段 → 平台 → 转弯 → 第二段 → 上一层，中间平台不换层。
+     注意：目标朝向必须每帧按当前位置重算。若只在进入时算一次并锁死，
+     横移换道后正确朝向已经变了，会出现「已转到位但永远不满足放行」的死锁。 */
+  function stairTurnStep(dt, respectInput) {
+    var st = stairAt(player.x, player.y);
+    if (!st) { stairTurn = null; stairManualOverride = false; return false; }
+    if (stairT(st, player.x, player.y) < 0.78) {   // 还没到平台 / 已经走上第二跑
+      stairTurn = null;
+      stairManualOverride = false;
+      return false;
+    }
+    if (respectInput) {
+      /* 有转身/平移输入 → 全交还玩家，并记下「本次平台由玩家接管」 */
+      if (action.turnL || action.turnR || action.strafeL || action.strafeR) {
+        stairTurn = null;
+        stairManualOverride = true;
+        return false;
+      }
+      /* 玩家在这个平台上自己转过 → 不再自动介入 */
+      if (stairManualOverride) { stairTurn = null; return false; }
+      /* 只有「明确向前走」才帮一把：站着不动或后退时不替玩家转身 */
+      if (!action.fwd) { stairTurn = null; return false; }
+    }
+
+    var e = stairEnds(st);
+    var laneTarget = laneMidOf(st, true);                          // 折返跑中心线
+    var acrossNow = st.axis === 'x' ? player.y : player.x;
+    var laneOff = Math.abs(acrossNow - laneTarget);
+    /* 门洞中心（门节点位置）：第二跑走到门口要正对门洞，
+       否则会撞在门旁边的墙上。 */
+    var dp = stairDoorPoint(st);
+    var aimX = dp ? dp.x : (e.axis === 'x' ? e.doorX : st.x + st.w / 2);
+    var aimY = dp ? dp.y : (e.axis === 'x' ? st.y + st.h / 2 : e.doorY);
+    var want = Math.atan2(aimY - player.y, aimX - player.x) * 180 / Math.PI;
+    var diff = ((want - player.theta + 540) % 360) - 180;
+
+    var laneOk = laneOff < 2 || (stairTurn && stairTurn.blocked);
+    if (laneOk && Math.abs(diff) < 8) { stairTurn = null; return false; }   // 站到折返跑且转向完成
+
+    if (!stairTurn) {
+      stairTurn = { blocked: false };
+      $('spawnNote').textContent = '到楼梯中间平台，转弯后继续'
+        + (world.stairSign > 0 ? '上行' : '下行') + '…';
+    }
+
+    /* 1) 先横移到折返跑中心（每帧 ≤2px；平台一带两跑等高，高度不跳） */
+    if (laneOff > 0.5) {
+      var stepA = Math.min(2, laneOff) * (acrossNow < laneTarget ? 1 : -1);
+      var nx = st.axis === 'x' ? player.x : player.x + stepA;
+      var ny = st.axis === 'x' ? player.y + stepA : player.y;
+      /* 必须同时查「点是否在墙里」和「带半径是否撞墙」：
+         窄楼梯间里跑道中心可能贴墙，只查点会把人挪进墙里、卡死动不了 */
+      if (!world.isWallPx(nx, ny) && !world.collides(nx, ny) &&
+          Math.abs(world.heightAt(nx, ny, player.z) - (player.z || 0)) <= 0.3) {
+        player.x = nx; player.y = ny;
+      } else {
+        stairTurn.blocked = true;   // 换道被挡（噪声墙/太窄）：放弃换道直接转弯，避免死锁
+      }
+    }
+
+    /* 2) 渐进转向（朝第二跑行进方向；每帧按最新位置重算，横移后自动跟上） */
+    want = Math.atan2(aimY - player.y, aimX - player.x) * 180 / Math.PI;
+    var d2 = ((want - player.theta + 540) % 360) - 180;
+    if (Math.abs(d2) >= 2) {
+      var maxTurn = (world.turnSpeed || 120) * dt;
+      if (Math.abs(d2) <= maxTurn) player.theta = world.normalizeAngle(want);
+      else player.theta = world.normalizeAngle(player.theta + (d2 > 0 ? maxTurn : -maxTurn));
+    }
+    player.z = world.heightAt(player.x, player.y, player.z) || 0;
+    return true;
+  }
+
+  /* 朝某点走一步（巡航用） */
+  function steerTo(tx, ty, dt) {
+    var want = Math.atan2(ty - player.y, tx - player.x) * 180 / Math.PI;
+    var dth = ((want - player.theta + 540) % 360) - 180;
+    player = world.step(player, {
+      fwd: Math.abs(dth) < 8 ? 1 : 0,
+      turnR: dth > 0.5 ? 1 : 0,
+      turnL: dth < -0.5 ? 1 : 0
+    }, dt);
+  }
+
+  /* 巡航爬楼梯：真实走 第一跑 → 平台转弯 → 第二跑 → 到上一层地面才换层。
+     返回 'done'=已到上一层且走到该层楼梯口 / 'climb'=还在爬 */
+  function climbStep(dt) {
+    /* 已跨层（已站到上一层地面）：走到该层楼梯口节点即完成 */
+    if (floor.id === climb.targetFloor) {
+      var en = world.getNode(climb.destNode || climb.entry);
+      if (!en) return 'done';
+      if (Math.hypot(player.x - en.x, player.y - en.y) < 12) return 'done';
+      steerTo(en.x, en.y, dt);
+      return 'climb';
+    }
+
+    /* 平台转弯优先（渐进转 180° + 换跑道），转完再走第二跑。
+       巡航模式全程接管，不理会键盘输入。 */
+    if (stairTurnStep(dt, false)) return 'climb';
+
+    var st = stairAt(player.x, player.y) || nearestStair(player.x, player.y);
+    if (!st) return 'done';
+    if (!climb.phase) climb.phase = 'first';
+    /* 到了平台就进入第二跑阶段（阶段一旦切换就不再回头，避免在坡道上误判） */
+    if (climb.phase === 'first' && stairT(st, player.x, player.y) >= 0.78) climb.phase = 'second';
+
+    var e = stairEnds(st);
+    var laneMid = laneMidOf(st, climb.phase === 'second');   // 走在本跑的中间，不贴两跑之间的隔断
+    /* 第二跑要正对门节点走出去（门节点在墙正中，不在跑道中心） */
+    var dp = stairDoorPoint(st);
+    var tx, ty;
+    if (climb.phase === 'first') {          // 第一跑：门端 → 远端平台
+      tx = e.axis === 'x' ? e.farX : laneMid;
+      ty = e.axis === 'x' ? laneMid : e.farY;
+    } else {                                 // 第二跑：平台 → 门端（上一层出口，对准门节点）
+      tx = dp ? dp.x : (e.axis === 'x' ? e.doorX : laneMid);
+      ty = dp ? dp.y : (e.axis === 'x' ? laneMid : e.doorY);
+    }
+    steerTo(tx, ty, dt);
+    if (window.__FP_DBG) {   // 调试/自动化排查用：window.__FP_DBG = true 才会写
+      window.__climbDbg = { tx: tx, ty: ty, phase: climb.phase, floor: floor.id,
+        st: [st.x, st.y, st.w, st.h, st.axis, st.dir],
+        laneMid: laneMid, p: [player.x, player.y, player.z, player.theta] };
+    }
+    checkStairTransition();   // 只有真正爬到上一层地面才换层
+    return 'climb';
+  }
+
+  /* 走楼梯真实跨层：只有当玩家真正爬到「上一层地面」时才换层。
+     本层视角：上行楼层的 z 到 +层高、下行楼层的 z 到 −层高（即站在上一层那扇门的地面上）。
+     中间休息平台（±半层高）只转弯，绝不换层 —— 这样楼层判定与所处位置一致。 */
+  function checkStairTransition() {
+    var inStair = !!stairAt(player.x, player.y);
+    var z = player.z || 0;
+
+    /* 未武装：走出楼梯间才重新武装（防止刚上一层又原地判成下楼） */
+    if (!stairArmed) {
+      if (!inStair) stairArmed = true;
+      return;
+    }
+    if (!inStair) return;
+
+    /* 找到最近的楼梯口节点（有跨层边的），拿到去另一层的目标 */
+    var near = null, bd = Infinity;
+    Object.keys(stairNeighbors).forEach(function (sid) {
+      if (String(sid).split('/')[0] !== floor.id) return;
+      var nn = world.getNode(sid);
+      if (!nn) return;
+      var d = Math.hypot(nn.x - player.x, nn.y - player.y);
+      if (d < bd) { bd = d; near = sid; }
+    });
+    var nb = near ? stairNeighbors[near] : null;
+    if (!nb || !nb.length) return;
+    var target = nb[0];   // { to, name }
+
+    var fh = world.floorHeight || 3.0;
+    var goingUp = world.stairSign > 0;
+    /* 到顶判定：走到上一层地面高度（本层视角 ±层高）才算到了上一层 */
+    var reachedTop = goingUp ? (z >= fh - 0.02) : (z <= -fh + 0.02);
+    if (!reachedTop) return;
+
+    var toFloor = String(target.to).split('/')[0];
+    /* 取证快照（调试/自动化验收用）：记录这次换层发生时的楼层与高度，
+       用来证明「是爬到上一层地面(±层高)才换」，而不是在中间平台(±半层)就换。 */
+    window.__lastStairCross = { from: floor.id, to: toFloor, z: z, floorHeight: fh };
+    floor = floorById(toFloor);
+    world = worlds[toFloor];
+    player.floorId = toFloor;
+    player.baseY = BASE[toFloor];
+    /* 绝对高度连续：上一层地面在本层视角就是 0 */
+    player.z = world.heightAt(player.x, player.y, 0) || 0;
+    stairArmed = false;    // 走出楼梯间后才允许再次跨层
+    stairTurn = null;
+    walkTrail.push({ x: player.x, y: player.y });
+    if (!overviews[toFloor]) overviews[toFloor] = buildOverview(toFloor);
+    ov = overviews[toFloor];
+    $('floorSel').value = toFloor;
+    $('spawnNote').textContent = '走楼梯' + (goingUp ? '上' : '下') + '到了 ' + floorName(toFloor)
+      + '（已走完两跑梯段到达本层地面）';
+  }
+
+  function loop(now) {
+    var dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+
+    /* 玩家按键最高优先级：只要按了任意前进/后退/转向键，
+       立刻中断正在进行的自动巡航（含爬楼梯子状态），把控制权交还键盘。
+       不做这一步的话，巡航期间所有按键都会被 autoNodes 分支吞掉，按键等于没反应。 */
+    var manualInput = action.fwd || action.back || action.turnL || action.turnR ||
+                      action.strafeL || action.strafeR;
+    if (manualInput && ((autoNodes && !autoDone) || climb)) {
+      autoNodes = null; autoDone = false; climb = null; stairTurn = null;
+      $('spawnNote').textContent = '已由键盘接管（自动巡航已停止）';
+    }
+
+    if (autoNodes && !autoDone) {
+      /* 爬楼梯模式激活：真实沿台阶逐级跨层（不瞬移） */
+      if (climb) {
+        if (climbStep(dt) === 'done') {
+          // 爬完：已跨层且站在目标层门端节点，恢复巡航，本帧继续朝下一节点走
+          climb = null;
+          var tgt0 = G.nodes[autoNodes[autoI]];
+          // 门端节点坐标在两层相同，走到它附近即算「已到本节点」，推进 autoI
+          var d0 = Math.hypot(tgt0.x - player.x, tgt0.y - player.y);
+          if (d0 < 8) {
+            autoI++;
+            if (autoI >= autoNodes.length) {
+              autoDone = true;
+              $('spawnNote').textContent = '已到达 ' + autoLab.name + '（' + floorName(autoLab.floor) + ' ' + autoLab.room + '）门口';
+            }
+          }
+        }
+      } else {
+        /* 检测跨层：下一个目标节点在另一层 → 进入「真实走楼梯」模式（绝不瞬移） */
+        var tgt = G.nodes[autoNodes[autoI]];
+        if (tgt.floor !== floor.id) {
+          // entryNode = 本层这一侧的楼梯口节点；destNode = 另一层那一侧的楼梯口节点（同坐标）
+          var entryNode = autoI > 0 ? autoNodes[autoI - 1] : null;
+          climb = { targetFloor: tgt.floor, entry: entryNode, destNode: autoNodes[autoI], phase: 'first' };
+          stairArmed = true;   // 重新武装，允许爬到顶时换层
+          stairTurn = null;
+          $('spawnNote').textContent = '走进楼梯间：先走第一跑到中间平台，转弯后再走第二跑到 '
+            + floorName(tgt.floor) + ' …';
+          /* 本帧先不移动，下一帧进入 climbStep 开始真实爬楼 */
+        } else {
+          var dx = tgt.x - player.x, dy = tgt.y - player.y;
+          var dist = Math.hypot(dx, dy);
+          if (dist < 8) {
+            autoI++;
+            if (autoI >= autoNodes.length) {
+              autoDone = true;
+              $('spawnNote').textContent = '已到达 ' + autoLab.name + '（' + floorName(autoLab.floor) + ' ' + autoLab.room + '）门口';
+            }
+          } else {
+            var want = Math.atan2(dy, dx) * 180 / Math.PI;
+            var dth = ((want - player.theta + 540) % 360) - 180;
+            var fwd = Math.abs(dth) < 6 ? 1 : 0;
+            player = world.step(player, { fwd: fwd, turnR: dth > 0.5 ? 1 : 0, turnL: dth < -0.5 ? 1 : 0 }, dt);
+          }
+        }
+      }
+    } else {
+      /* 手动模式：平台上的自动转弯只是「辅助」——玩家一按转身/平移就把控制权交还，
+         所以放在前面判断，返回 false 时当帧照常走玩家输入 */
+      if (stairTurnStep(dt, true)) {
+        player.z = world.heightAt(player.x, player.y, player.z) || 0;
+      } else {
+        player = noclip ? world.stepFree(player, action, dt) : world.step(player, action, dt);
+      }
+      checkStairTransition();
+    }
+    /* 保持玩家楼层标记与绝对高度（step 返回新对象会丢这些字段） */
+    player.floorId = floor.id;
+    player.baseY = BASE[floor.id] || 0;
+    window.FPView.updateFirstPerson(fp, player);
+    var lastT = walkTrail[walkTrail.length - 1];
+    if (!lastT || Math.hypot(player.x - lastT.x, player.y - lastT.y) > 4) {
+      walkTrail.push({ x: player.x, y: player.y });
+    }
+    window.FPView.renderOverview(ov, player, walkTrail);
+    updateHud();
+    requestAnimationFrame(loop);
+  }
+
+  /* ---------- 窗口尺寸自适应 ---------- */
+  function onResize() {
+    var fw = $('fpWrap').clientWidth, fh = $('fpWrap').clientHeight;
+    window.FPView.resizeFirstPerson(fp, fw, fh);
+    /* 所有已建的层一起 fit（共享同一 canvas，保证切层后静态图尺寸一致，不变形） */
+    Object.keys(overviews).forEach(function (fid) { overviews[fid].fit(); });
+  }
+  window.addEventListener('resize', onResize);
+
+  /* ---------- 启动：一次建好叠层场景（二楼在下、三楼在上），?floor=B2-2|B2-3 选出生层 ---------- */
+  var wrapInit = $('fpWrap');
+  fp = window.FPView.initFirstPerson(wrapInit, [
+    { world: worlds['B2-2'], baseY: BASE['B2-2'] },
+    { world: worlds['B2-3'], baseY: BASE['B2-3'] }
+  ]);
+  wrapInit.appendChild($('crosshair'));
+  wrapInit.appendChild($('fpTip'));
+  window.__fpView = fp;   // 调试/校验用：暴露第一人称渲染对象
+
+  var startFloor = params.get('floor');
+  if (!startFloor || FLOOR_IDS.indexOf(startFloor) < 0) startFloor = 'B2-2';
+  switchFloor(startFloor, null, 90, true);
+  $('spawnNote').textContent = '当前 ' + floorName(floor.id) + ' · 三楼架在二楼正上方，楼梯口有楼板洞口，走进楼梯走到头穿洞上/下楼';
+  if (params.get('autowalk')) startAuto(params.get('autowalk'));
+  requestAnimationFrame(loop);
+
+  /* ---------- 校验器对接 ---------- */
+  window.__FP__ = {
+    version: world.version,
+    get world() { return world; },
+    getFloor: function () { return floor.id; },
+    switchFloor: function (fid) { return switchFloor(fid, null, 90, true); },
+    useStair: function () { return tryUseStair(); },
+    getState: function () {
+      var n = nearestNode(player.x, player.y);
+      return { x: player.x, y: player.y, theta: player.theta, z: player.z || 0, node: n ? n.id : null, floorId: floor.id, baseY: player.baseY || 0 };
+    },
+    setState: function (x, y, theta) {
+      player = { x: x, y: y, theta: world.normalizeAngle(theta || 0), floorId: floor.id, baseY: BASE[floor.id] || 0, z: 0 };
+      return player;
+    },
+    teleportNode: function (nodeId, facingDeg) {
+      var fid = String(nodeId || '').split('/')[0];
+      /* 楼梯口节点且未指定朝向 → 面向楼梯间 */
+      var face = (facingDeg === undefined && stairNeighbors[nodeId]) ? stairFacing(fid, nodeId) : facingDeg;
+      if (fid && fid !== floor.id) switchFloor(fid, nodeId, face, true);
+      var s = world.spawnAtNode(nodeId, face);
+      if (s) { s.floorId = floor.id; s.baseY = BASE[floor.id] || 0; s.z = 0; player = s; }
+      return player;
+    },
+    step: function (act, dt) {
+      player = world.step(player, act, dt);
+      player.floorId = floor.id;
+      player.baseY = BASE[floor.id] || 0;
+      checkStairTransition();   // 校验器步进也要走完整移动语义（含跨层触发）
+      return window.__FP__.getState();
+    },
+    castRay: function (theta) { return world.castRay(player.x, player.y, theta); },
+    castRayAt: function (x, y, theta) { return world.castRay(x, y, theta); },
+    isWallPx: function (x, y) { return world.isWallPx(x, y); },
+    grid: function () { return world.grid; },
+    rooms: function () { return world.rooms; },
+    nodes: function () { return world.nodes; },
+    edges: function () { return world.edges; },
+    walls: function () { return world.walls; },
+    links: function () { return LINKS; },
+    stairNeighbors: function () { return stairNeighbors; },
+    route: function (destText) { return startAuto(destText); },
+    selfTest: function () { return window.FPValidate.run(world); }
+  };
+
+  console.log('[FP2] 两层第一人称探索已启动（走楼梯跨层）。校验器 window.__FP__，当前层 ' + floor.id);
+  console.log('[FP2] 楼梯连接 ' + LINKS.length + ' 条：', LINKS.map(function(l){return l.name;}).join('、'));
+})();
+</script>
+</body>
+</html>

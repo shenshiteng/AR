@@ -1,0 +1,27 @@
+{
+  "mode": "short",
+  "base": "https://go.example.edu.cn",
+  "qr_mm": 90,
+  "border": 4,
+  "count": 3,
+  "items": [
+    {
+      "id": "P-B2-01",
+      "place": "3层 · 东北楼梯口（324旁·疏散图旁）",
+      "file": "P-B2-01.svg",
+      "url": "https://go.example.edu.cn/p-b2-01"
+    },
+    {
+      "id": "P-B2-06",
+      "place": "5层 · 西北楼梯口（疏散图红点旁）",
+      "file": "P-B2-06.svg",
+      "url": "https://go.example.edu.cn/p-b2-06"
+    },
+    {
+      "id": "P-B2-08",
+      "place": "2层 · 西北楼梯口",
+      "file": "P-B2-08.svg",
+      "url": "https://go.example.edu.cn/p-b2-08"
+    }
+  ]
+}

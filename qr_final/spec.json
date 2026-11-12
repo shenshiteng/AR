@@ -1,0 +1,127 @@
+{
+  "mode": "online-direct",
+  "base": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL",
+  "ecc": "Q",
+  "border": 4,
+  "dpi": 300,
+  "print_size_mm": 150,
+  "sizes_mm": [
+    150.0,
+    90.0
+  ],
+  "version": 7,
+  "data_modules": 45,
+  "modules": 53,
+  "module_mm": 3.333,
+  "count": 12,
+  "items": [
+    {
+      "id": "P-B2-01",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-01",
+      "place": "3层 · 东北楼梯口（324旁·疏散图旁）",
+      "floor": "B2-3",
+      "floor_short": "3层",
+      "short_place": "东北楼梯口",
+      "sample_room": "301"
+    },
+    {
+      "id": "P-B2-02",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-02",
+      "place": "3层 · 西北楼梯口",
+      "floor": "B2-3",
+      "floor_short": "3层",
+      "short_place": "西北楼梯口",
+      "sample_room": "301"
+    },
+    {
+      "id": "P-B2-03",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-03",
+      "place": "3层 · 东南楼梯口",
+      "floor": "B2-3",
+      "floor_short": "3层",
+      "short_place": "东南楼梯口",
+      "sample_room": "301"
+    },
+    {
+      "id": "P-B2-04",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-04",
+      "place": "3层 · 东侧楼梯口（334旁）",
+      "floor": "B2-3",
+      "floor_short": "3层",
+      "short_place": "东侧楼梯口",
+      "sample_room": "301"
+    },
+    {
+      "id": "P-B2-05",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-05",
+      "place": "3层 · 西南楼梯口",
+      "floor": "B2-3",
+      "floor_short": "3层",
+      "short_place": "西南楼梯口",
+      "sample_room": "301"
+    },
+    {
+      "id": "P-B2-06",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-06",
+      "place": "5层 · 西北楼梯口（疏散图红点旁）",
+      "floor": "B2-5",
+      "floor_short": "5层",
+      "short_place": "西北楼梯口",
+      "sample_room": "501"
+    },
+    {
+      "id": "P-B2-07",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-07",
+      "place": "5层 · 东北楼梯口",
+      "floor": "B2-5",
+      "floor_short": "5层",
+      "short_place": "东北楼梯口",
+      "sample_room": "501"
+    },
+    {
+      "id": "P-B2-08",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-08",
+      "place": "2层 · 西北楼梯口",
+      "floor": "B2-2",
+      "floor_short": "2层",
+      "short_place": "西北楼梯口",
+      "sample_room": "201"
+    },
+    {
+      "id": "P-B2-09",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-09",
+      "place": "2层 · 东北楼梯口（226旁）",
+      "floor": "B2-2",
+      "floor_short": "2层",
+      "short_place": "东北楼梯口",
+      "sample_room": "201"
+    },
+    {
+      "id": "P-B2-10",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-10",
+      "place": "2层 · 东侧楼梯口（疏散图红点旁）",
+      "floor": "B2-2",
+      "floor_short": "2层",
+      "short_place": "东侧楼梯口",
+      "sample_room": "201"
+    },
+    {
+      "id": "P-B2-11",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-11",
+      "place": "2层 · 西南楼梯口（208旁）",
+      "floor": "B2-2",
+      "floor_short": "2层",
+      "short_place": "西南楼梯口",
+      "sample_room": "201"
+    },
+    {
+      "id": "P-B2-12",
+      "url": "https://lab-ar-nav.app.workbuddy.host/fp-ar.html?sharecode=COAQ2BOKWL&loc=P-B2-12",
+      "place": "2层 · 东南楼梯口（201旁）",
+      "floor": "B2-2",
+      "floor_short": "2层",
+      "short_place": "东南楼梯口",
+      "sample_room": "201"
+    }
+  ]
+}
